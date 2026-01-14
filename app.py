@@ -73,7 +73,7 @@ def ml_clean(file) -> pd.DataFrame:
     df = normalize_df(df)
     df = df.dropna(axis=1, how="all")
 
-    # auto numeric
+    # auto numeric (sem travar)
     for c in df.columns:
         conv = clean_numeric_series(df[c])
         if conv.notna().mean() >= 0.70:
@@ -104,25 +104,53 @@ def fmt_pct(v):
     return f"{float(v)*100:.1f}%".replace(".", ",")
 
 # =========================
-# Identificação do tipo
+# Detecção robusta do tipo
 # =========================
 
-def guess_report_type(df: pd.DataFrame) -> str:
-    cols = " | ".join([c.lower() for c in df.columns])
+def score_report_type(df: pd.DataFrame):
+    cols = [str(c).strip().lower() for c in df.columns]
 
-    if ("nome da campanha" in cols or "campanha" in cols) and ("orçamento" in cols or "acos objetivo" in cols or "perda" in cols):
-        return "campanhas"
+    def has_any(keys):
+        return any(any(k in c for c in cols) for k in keys)
 
-    if ("mlb" in cols or "id do item" in cols or "item id" in cols) and ("investimento" in cols or "gasto" in cols) and ("roas" in cols or "acos" in cols):
-        return "anuncios_patrocinados"
+    # sinais fortes
+    score_camp = 0
+    score_ads = 0
+    score_pub = 0
 
-    if ("id do anúncio" in cols or "id do anuncio" in cols) and ("visitas únicas" in cols or "visitas unicas" in cols):
-        return "publicacoes"
+    # Campanhas
+    if has_any(["nome da campanha", "campanha"]): score_camp += 3
+    if has_any(["orçamento", "orcamento", "budget"]): score_camp += 2
+    if has_any(["acos objetivo", "acos alvo"]): score_camp += 2
+    if has_any(["perda por orçamento", "perda orçamento", "% perda orçamento"]): score_camp += 2
+    if has_any(["perda por classificação", "perda por rank", "% perda classificação"]): score_camp += 2
+    if has_any(["impress", "clique", "vendas", "receita", "investimento", "gasto", "custo"]): score_camp += 1
 
-    return "desconhecido"
+    # Anúncios patrocinados
+    if has_any(["mlb", "item id", "id do item"]): score_ads += 3
+    if has_any(["investimento", "gasto", "custo", "spend"]): score_ads += 2
+    if has_any(["roas"]): score_ads += 2
+    if has_any(["acos"]): score_ads += 2
+    if has_any(["anúncio", "titulo", "título"]): score_ads += 1
+    if has_any(["impress", "clique"]): score_ads += 1
+
+    # Publicações
+    if has_any(["id do anúncio", "id do anuncio"]): score_pub += 3
+    if has_any(["visitas únicas", "visitas unicas", "visitas"]): score_pub += 2
+    if has_any(["quantidade de vendas", "compradores", "unidades", "vendas brutas"]): score_pub += 2
+    if has_any(["variação", "variacao", "sku"]): score_pub += 1
+
+    scores = {
+        "campanhas": score_camp,
+        "anuncios_patrocinados": score_ads,
+        "publicacoes": score_pub,
+    }
+
+    best = max(scores, key=scores.get)
+    return best, scores
 
 # =========================
-# Análise de Campanhas
+# Análises
 # =========================
 
 def analyze_campaigns(df):
@@ -135,7 +163,7 @@ def analyze_campaigns(df):
     col_loss_rank = find_col(df, ["Perda por Classificação", "% Perda Classificação", "Perda por rank", "Loss rank"])
 
     if col_name is None or col_spend is None or col_revenue is None:
-        return None, "Não achei colunas mínimas em Campanhas (Nome da Campanha, Investimento, Receita)."
+        return None, "Campanhas: preciso de Nome da Campanha, Investimento/Gasto e Receita/Vendas."
 
     out = pd.DataFrame()
     out["Campanha"] = df[col_name].astype(str)
@@ -157,11 +185,13 @@ def analyze_campaigns(df):
     out["rev_cum"] = out["rev_share"].cumsum()
     out["Prioridade_Pareto"] = out["rev_cum"] <= 0.80
 
+    # Matriz CPI
     med = out["Receita"].median(skipna=True)
     receita_relevante = (out["Receita"] >= med) | (out["Prioridade_Pareto"] == True)
 
-    escala_orc = (out["ROAS"] > 7) & (out["Perda_orc"] > 0.40)
-    competitividade = receita_relevante & (out["Perda_rank"] > 0.50)
+    # Se não tiver perda_orc/perda_rank, não derruba tudo, só reduz precisão
+    escala_orc = (out["ROAS"] > 7) & (out["Perda_orc"] > 0.40) if out["Perda_orc"].notna().any() else (out["ROAS"] > 8)
+    competitividade = receita_relevante & (out["Perda_rank"] > 0.50) if out["Perda_rank"].notna().any() else (receita_relevante & (out["ROAS"].between(3, 7)))
     hemorragia = (out["ROAS"] < 3) | ((out["ACOS_real"] > (out["ACOS_objetivo"] * 1.35)) & (~pd.isna(out["ACOS_objetivo"])))
 
     out["Quadrante"] = "ESTÁVEL"
@@ -186,10 +216,6 @@ def analyze_campaigns(df):
     }
     return out, meta
 
-# =========================
-# Análise de Anúncios Patrocinados
-# =========================
-
 def analyze_sponsored_ads(df):
     col_mlb = find_col(df, ["MLB", "Item ID", "ID do item", "ID"])
     col_title = find_col(df, ["Título do anúncio", "Titulo", "Anúncio", "Anuncio", "Item"])
@@ -199,7 +225,7 @@ def analyze_sponsored_ads(df):
     col_acos = find_col(df, ["ACOS", "ACOS real", "ACOS Real"])
 
     if col_spend is None or col_revenue is None:
-        return None, "Não achei colunas mínimas em Anúncios Patrocinados (Investimento, Receita)."
+        return None, "Anúncios patrocinados: preciso de Investimento e Receita."
 
     out = pd.DataFrame()
     out["MLB"] = df[col_mlb].astype(str) if col_mlb else "-"
@@ -209,7 +235,6 @@ def analyze_sponsored_ads(df):
 
     out["ROAS"] = df[col_roas] if col_roas else out["Receita"] / out["Investimento"].replace(0, pd.NA)
     out["ACOS_real"] = df[col_acos] if col_acos else out["Investimento"] / out["Receita"].replace(0, pd.NA)
-
     out.loc[out["ACOS_real"] > 2, "ACOS_real"] = out.loc[out["ACOS_real"] > 2, "ACOS_real"] / 100.0
 
     estrela = (out["ROAS"] >= 7) & (out["Receita"] > 0)
@@ -229,39 +254,26 @@ def analyze_sponsored_ads(df):
     }
     return out, meta
 
-# =========================
-# Publicações (conversão por variação)
-# =========================
-
 def analyze_publicacoes(df):
-    col_ad_id = find_col(df, ["ID do anúncio", "ID do anuncio"])
     col_title = find_col(df, ["Anúncio", "Anuncio"])
     col_var = find_col(df, ["Variação", "Variacao"])
-    col_visits = find_col(df, ["Visitas únicas", "Visitas unicas"])
+    col_visits = find_col(df, ["Visitas únicas", "Visitas unicas", "Visitas"])
     col_sales = find_col(df, ["Quantidade de vendas", "Vendas"])
-    col_gmv = find_col(df, ["Vendas brutas", "GMV"])
 
     if col_visits is None or col_sales is None:
-        return None, "Não achei colunas mínimas em Publicações (Visitas únicas, Quantidade de vendas)."
+        return None, "Publicações: preciso de Visitas únicas e Quantidade de vendas."
 
     out = pd.DataFrame()
-    out["ID anúncio"] = df[col_ad_id].astype(str) if col_ad_id else "-"
     out["Anúncio"] = df[col_title].astype(str) if col_title else "Anúncio"
     out["Variação"] = df[col_var].astype(str) if col_var else "-"
     out["Visitas"] = df[col_visits]
     out["Vendas"] = df[col_sales]
-    out["GMV"] = df[col_gmv] if col_gmv else pd.NA
-
     out["CVR"] = out["Vendas"] / out["Visitas"].replace(0, pd.NA)
-    out = out.sort_values("Visitas", ascending=False)
 
-    # top variações ruins e boas por conversão (com mínimo de visitas)
     base = out[out["Visitas"] >= 20].copy()
     boas = base.sort_values("CVR", ascending=False).head(25)
     ruins = base.sort_values("CVR", ascending=True).head(25)
-
-    meta = {"top_boas": boas, "top_ruins": ruins}
-    return out, meta
+    return out, {"top_boas": boas, "top_ruins": ruins}
 
 # =========================
 # UI
@@ -269,52 +281,59 @@ def analyze_publicacoes(df):
 
 period_label = st.text_input("Rótulo do período", value="Últimos 15 dias")
 
-f1 = st.file_uploader("1) Campanhas", type=["csv", "xlsx", "xls"])
-f2 = st.file_uploader("2) Anúncios patrocinados", type=["csv", "xlsx", "xls"])
-f3 = st.file_uploader("3) Publicações (opcional)", type=["csv", "xlsx", "xls"])
+f_camp = st.file_uploader("Campanhas", type=["csv", "xlsx", "xls"])
+f_ads = st.file_uploader("Anúncios patrocinados", type=["csv", "xlsx", "xls"])
+f_pub = st.file_uploader("Publicações (opcional)", type=["csv", "xlsx", "xls"])
 
 gerar = st.button("Gerar relatório", type="primary", use_container_width=True)
 
 if gerar:
-    if not f1 or not f2:
+    if not f_camp or not f_ads:
         st.error("Preciso pelo menos de Campanhas e Anúncios patrocinados.")
         st.stop()
 
     with st.spinner("Limpando e lendo arquivos..."):
-        df1 = ml_clean(f1)
-        df2 = ml_clean(f2)
-        df3 = ml_clean(f3) if f3 else None
+        df_camp = ml_clean(f_camp)
+        df_ads = ml_clean(f_ads)
+        df_pub = ml_clean(f_pub) if f_pub else None
 
-    t1 = guess_report_type(df1)
-    t2 = guess_report_type(df2)
+    # debug e fallback
+    t1, s1 = score_report_type(df_camp)
+    t2, s2 = score_report_type(df_ads)
 
-    # garante ordem correta, mesmo se você subir invertido
-    camps_df = df1 if t1 == "campanhas" else (df2 if t2 == "campanhas" else None)
-    ads_df = df2 if t2 == "anuncios_patrocinados" else (df1 if t1 == "anuncios_patrocinados" else None)
+    with st.expander("Diagnóstico de detecção (para garantir 100%)", expanded=False):
+        st.write("Campanhas upload: tipo sugerido:", t1, "scores:", s1)
+        st.write("Colunas (campanhas):", list(df_camp.columns))
+        st.write("Anúncios upload: tipo sugerido:", t2, "scores:", s2)
+        st.write("Colunas (anúncios):", list(df_ads.columns))
 
-    if camps_df is None or ads_df is None:
-        st.error("Não consegui identificar Campanhas e Anúncios patrocinados pelos headers. Verifique se subiu os relatórios corretos.")
+    # Se ainda confundir, deixa escolher manualmente
+    if max(s1.values()) < 4 or max(s2.values()) < 4:
+        st.warning("Detecção ficou incerta. Selecione manualmente o tipo de cada arquivo.")
+        escolha1 = st.selectbox("Arquivo 1 é:", ["campanhas", "anuncios_patrocinados"], index=0)
+        escolha2 = st.selectbox("Arquivo 2 é:", ["campanhas", "anuncios_patrocinados"], index=1)
+    else:
+        escolha1, escolha2 = t1, t2
+
+    camps_df = df_camp if escolha1 == "campanhas" else df_ads
+    ads_df = df_ads if escolha2 == "anuncios_patrocinados" else df_camp
+
+    camp_out, camp_meta = analyze_campaigns(camps_df)
+    if camp_out is None:
+        st.error(camp_meta)
         st.stop()
 
-    with st.spinner("Analisando campanhas..."):
-        camp_out, camp_meta = analyze_campaigns(camps_df)
-        if camp_out is None:
-            st.error(camp_meta)
-            st.stop()
-
-    with st.spinner("Analisando anúncios patrocinados..."):
-        ads_out, ads_meta = analyze_sponsored_ads(ads_df)
-        if ads_out is None:
-            st.error(ads_meta)
-            st.stop()
+    ads_out, ads_meta = analyze_sponsored_ads(ads_df)
+    if ads_out is None:
+        st.error(ads_meta)
+        st.stop()
 
     pub_out, pub_meta = (None, None)
-    if df3 is not None:
-        with st.spinner("Analisando publicações (variações e conversão)..."):
-            pub_out, pub_meta = analyze_publicacoes(df3)
+    if df_pub is not None:
+        pub_out, pub_meta = analyze_publicacoes(df_pub)
 
     # =========================
-    # RELATÓRIO FINAL (FORMATO OBRIGATÓRIO)
+    # RELATÓRIO FINAL
     # =========================
     st.markdown("## Relatório Estratégico de Performance")
     st.caption(period_label)
@@ -376,18 +395,9 @@ if gerar:
 
     st.markdown("**Dia 5 (Monitorar):**")
     st.write("- Monitore ROAS pós mudanças e se receita cresce mais rápido que investimento.")
-    st.write("- Se ROAS cair forte após abrir funil, você abriu demais. Recuar e reavaliar no próximo ciclo.")
 
     st.markdown("### 4. 📋 Painel de Controle Geral")
     painel = camp_out[["Campanha","Orçamento_atual","ACOS_objetivo","ROAS","Perda_orc","Perda_rank","AÇÃO RECOMENDADA"]].copy()
-    painel = painel.rename(columns={
-        "Campanha":"Nome da Campanha",
-        "Orçamento_atual":"Orçamento Atual",
-        "ACOS_objetivo":"ACOS Objetivo Atual",
-        "ROAS":"ROAS Real (calculado)",
-        "Perda_orc":"% Perda Orçamento",
-        "Perda_rank":"% Perda Classificação (rank)",
-    })
     st.dataframe(painel, use_container_width=True)
 
     st.markdown("## Corte de Sangria em Produtos e Anúncios")
@@ -404,10 +414,10 @@ if gerar:
 
     if pub_out is not None:
         st.markdown("## Variações e Conversão (Publicações)")
-        c1, c2 = st.columns(2)
-        with c1:
+        x1, x2 = st.columns(2)
+        with x1:
             st.markdown("**🟢 Melhores variações (CVR alto, min 20 visitas)**")
             st.dataframe(pub_meta["top_boas"][["Anúncio","Variação","Visitas","Vendas","CVR"]], use_container_width=True)
-        with c2:
+        with x2:
             st.markdown("**🔴 Piores variações (CVR baixo, min 20 visitas)**")
             st.dataframe(pub_meta["top_ruins"][["Anúncio","Variação","Visitas","Vendas","CVR"]], use_container_width=True)
