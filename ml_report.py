@@ -203,6 +203,73 @@ def add_strategy_fields(
         "ROAS_real": "ROAS",
         "ACOS_real": "ACOS real",
     })
+
+    df = add_impact_reais(df)
+    return df
+
+
+def add_impact_reais(camp_strat: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona:
+    - Orcamento_sugerido
+    - ACOS_obj_sugerido
+    - Receita_potencial_R$
+    - Confianca
+    """
+    df = camp_strat.copy()
+
+    for c in ["Receita","Investimento","Orçamento","Perdidas_Orc","Perdidas_Class","ACOS Objetivo"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    df["Receita_potencial_R$"] = 0.0
+    df["Confianca"] = "Baixa"
+    df["Orcamento_sugerido"] = pd.NA
+    df["ACOS_obj_sugerido"] = pd.NA
+
+    # ESCALA ORCAMENTO
+    # Receita incremental conservadora: Receita * (perda_orc/(1-perda_orc)) * 0.5
+    mask_mina = (df["Quadrante"] == "ESCALA ORÇAMENTO") & (df["Receita"].fillna(0) > 0)
+    if mask_mina.any():
+        perda = df.loc[mask_mina, "Perdidas_Orc"].fillna(0).clip(lower=0, upper=0.95)
+        inc = df.loc[mask_mina, "Receita"] * (perda / (1 - perda)) * 0.5
+        df.loc[mask_mina, "Receita_potencial_R$"] = inc.fillna(0).clip(lower=0)
+
+        # orcamento sugerido: +max(20%, min(50%, perda_orc))
+        if "Orçamento" in df.columns:
+            inc_pct = perda.clip(lower=0.20, upper=0.50)
+            df.loc[mask_mina, "Orcamento_sugerido"] = (df.loc[mask_mina, "Orçamento"] * (1 + inc_pct)).round(2)
+
+        df.loc[mask_mina, "Confianca"] = "Alta"
+
+    # COMPETITIVIDADE
+    # Receita incremental mais conservadora: Receita * (perda_rank/(1-perda_rank)) * 0.25
+    mask_gig = (df["Quadrante"] == "COMPETITIVIDADE") & (df["Receita"].fillna(0) > 0)
+    if mask_gig.any():
+        perda = df.loc[mask_gig, "Perdidas_Class"].fillna(0).clip(lower=0, upper=0.95)
+        inc = df.loc[mask_gig, "Receita"] * (perda / (1 - perda)) * 0.25
+        df.loc[mask_gig, "Receita_potencial_R$"] = inc.fillna(0).clip(lower=0)
+        df.loc[mask_gig, "Confianca"] = "Media"
+
+        # ACOS objetivo sugerido: +2pp a +5pp dependendo da perda_rank
+        if "ACOS Objetivo" in df.columns:
+            base = df.loc[mask_gig, "ACOS Objetivo"].fillna(0)
+            delta = perda.apply(lambda x: 0.02 if x < 0.60 else (0.03 if x < 0.75 else 0.05))
+            sug = (base + delta).clip(upper=0.80)
+            df.loc[mask_gig, "ACOS_obj_sugerido"] = sug.round(4)
+
+    # HEMORRAGIA
+    mask_hemo = df["Quadrante"] == "HEMORRAGIA"
+    if mask_hemo.any():
+        df.loc[mask_hemo, "Receita_potencial_R$"] = 0.0
+        df.loc[mask_hemo, "Confianca"] = "Alta"
+
+    # ESTAVEL
+    mask_est = df["Quadrante"] == "ESTÁVEL"
+    if mask_est.any():
+        df.loc[mask_est, "Confianca"] = "Media"
+
+    df["Receita_potencial_R$"] = pd.to_numeric(df["Receita_potencial_R$"], errors="coerce").fillna(0).round(2)
     return df
 
 
@@ -237,7 +304,7 @@ def build_pause_campaigns(camp_strat: pd.DataFrame, pause_invest_min: float, pau
     ].copy()
 
     pause = pause.sort_values(["Investimento","Receita"], ascending=[False, True])
-    keep = ["Nome","Status","Investimento","Receita","ROAS","CVR","Quadrante","AÇÃO"]
+    keep = ["Nome","Status","Investimento","Receita","ROAS","CVR","Quadrante","AÇÃO","Confianca"]
     keep = [c for c in keep if c in pause.columns]
     return pause[keep].head(50)
 
@@ -245,17 +312,17 @@ def build_pause_campaigns(camp_strat: pd.DataFrame, pause_invest_min: float, pau
 def build_scale_budget(camp_strat: pd.DataFrame) -> pd.DataFrame:
     df = camp_strat.copy()
     scale = df[df["Quadrante"] == "ESCALA ORÇAMENTO"].copy()
-    keep = ["Nome","Orçamento","Investimento","Receita","ROAS","Perdidas_Orc","AÇÃO"]
+    keep = ["Nome","Orçamento","Orcamento_sugerido","Investimento","Receita","ROAS","Perdidas_Orc","Receita_potencial_R$","Confianca","AÇÃO"]
     keep = [c for c in keep if c in scale.columns]
-    return scale[keep].sort_values("Receita", ascending=False)
+    return scale[keep].sort_values("Receita_potencial_R$", ascending=False)
 
 
 def build_raise_acos(camp_strat: pd.DataFrame) -> pd.DataFrame:
     df = camp_strat.copy()
     acos = df[df["Quadrante"] == "COMPETITIVIDADE"].copy()
-    keep = ["Nome","ACOS Objetivo","Investimento","Receita","ROAS","Perdidas_Class","AÇÃO"]
+    keep = ["Nome","ACOS Objetivo","ACOS_obj_sugerido","Investimento","Receita","ROAS","Perdidas_Class","Receita_potencial_R$","Confianca","AÇÃO"]
     keep = [c for c in keep if c in acos.columns]
-    return acos[keep].sort_values("Receita", ascending=False)
+    return acos[keep].sort_values("Receita_potencial_R$", ascending=False)
 
 
 def build_kpis(org: pd.DataFrame, camp_agg: pd.DataFrame, pat: pd.DataFrame) -> pd.DataFrame:
@@ -307,7 +374,14 @@ def build_executive_diagnosis(camp_strat: pd.DataFrame, daily: pd.DataFrame = No
 
 
 def build_control_panel(camp_strat: pd.DataFrame) -> pd.DataFrame:
-    keep = ["Nome","Status","Orçamento","ACOS Objetivo","ROAS","Receita","Investimento","Perdidas_Orc","Perdidas_Class","Quadrante","AÇÃO"]
+    keep = [
+        "Nome","Status","Orçamento","Orcamento_sugerido",
+        "ACOS Objetivo","ACOS_obj_sugerido",
+        "ROAS","Receita","Investimento",
+        "Perdidas_Orc","Perdidas_Class",
+        "Receita_potencial_R$","Confianca",
+        "Quadrante","AÇÃO"
+    ]
     keep = [c for c in keep if c in camp_strat.columns]
     return camp_strat[keep].copy()
 
@@ -317,13 +391,180 @@ def build_opportunity_highlights(camp_strat: pd.DataFrame) -> dict:
     locomotivas = df[(df["CPI_80"] == True) & (df["Quadrante"] == "COMPETITIVIDADE")].copy()
     minas = df[df["Quadrante"] == "ESCALA ORÇAMENTO"].copy()
 
-    keep = ["Nome","Receita","Investimento","ROAS","Perdidas_Class","Perdidas_Orc","AÇÃO"]
+    keep = [
+        "Nome","Receita","Investimento","ROAS",
+        "Perdidas_Class","Perdidas_Orc",
+        "ACOS Objetivo","ACOS_obj_sugerido",
+        "Orçamento","Orcamento_sugerido",
+        "Receita_potencial_R$","Confianca","AÇÃO"
+    ]
     keep = [c for c in keep if c in df.columns]
 
-    locomotivas = locomotivas[keep].head(10).reset_index(drop=True)
-    minas = minas[keep].head(10).reset_index(drop=True)
+    locomotivas = locomotivas[keep].sort_values("Receita_potencial_R$", ascending=False).head(10).reset_index(drop=True)
+    minas = minas[keep].sort_values("Receita_potencial_R$", ascending=False).head(10).reset_index(drop=True)
 
     return {"Locomotivas": locomotivas, "Minas": minas}
+
+
+def build_tactical_plan(camp_strat: pd.DataFrame, horizon_days: int = 7) -> pd.DataFrame:
+    """
+    Gera plano tatico com base no horizonte escolhido.
+    horizon_days: 7 ou 15
+    """
+    df = camp_strat.copy()
+
+    minas = df[df["Quadrante"] == "ESCALA ORÇAMENTO"].copy()
+    gigantes = df[df["Quadrante"] == "COMPETITIVIDADE"].copy()
+    hemo = df[df["Quadrante"] == "HEMORRAGIA"].copy()
+
+    minas = minas.sort_values(["Receita_potencial_R$", "Receita"], ascending=False)
+    gigantes = gigantes.sort_values(["Receita_potencial_R$", "Receita"], ascending=False)
+    hemo = hemo.sort_values(["Investimento", "Receita"], ascending=[False, True])
+
+    tasks = []
+
+    if horizon_days <= 7:
+        # Dia 1: escalar minas
+        for _, r in minas.head(5).iterrows():
+            tasks.append({
+                "Dia": 1,
+                "Tipo": "Orcamento",
+                "Campanha": r.get("Nome"),
+                "Acao": f"Aumentar orcamento para {r.get('Orcamento_sugerido')}",
+                "Impacto_R$": r.get("Receita_potencial_R$"),
+                "Confianca": r.get("Confianca"),
+                "Motivo": "ROAS alto e perda por orcamento"
+            })
+
+        # Dia 2: destravar rank
+        for _, r in gigantes.head(5).iterrows():
+            tasks.append({
+                "Dia": 2,
+                "Tipo": "ACOS",
+                "Campanha": r.get("Nome"),
+                "Acao": f"Subir ACOS objetivo para {r.get('ACOS_obj_sugerido')}",
+                "Impacto_R$": r.get("Receita_potencial_R$"),
+                "Confianca": r.get("Confianca"),
+                "Motivo": "Receita relevante e perda por classificacao"
+            })
+
+        # Dia 3: cortar sangria
+        for _, r in hemo.head(5).iterrows():
+            tasks.append({
+                "Dia": 3,
+                "Tipo": "Corte",
+                "Campanha": r.get("Nome"),
+                "Acao": "Revisar e pausar ou reduzir agressivamente",
+                "Impacto_R$": 0.0,
+                "Confianca": "Alta",
+                "Motivo": "Hemorragia ou ACOS acima da meta"
+            })
+
+        # Dia 5: monitorar
+        tasks.append({
+            "Dia": 5,
+            "Tipo": "Monitoramento",
+            "Campanha": "Conta",
+            "Acao": "Monitorar CPC proxy, ticket e custo marginal",
+            "Impacto_R$": "",
+            "Confianca": "Media",
+            "Motivo": "Validar elasticidade do leilao"
+        })
+
+        # Dia 7: decisao
+        tasks.append({
+            "Dia": 7,
+            "Tipo": "Decisao",
+            "Campanha": "Conta",
+            "Acao": "Fechar ciclo e reforcar ajustes vencedores",
+            "Impacto_R$": "",
+            "Confianca": "Media",
+            "Motivo": "Consolidar ganhos e cortar perdas"
+        })
+
+    else:
+        # Plano 15 dias
+        # Dia 1: escalar minas (mais amplo)
+        for _, r in minas.head(8).iterrows():
+            tasks.append({
+                "Dia": 1,
+                "Tipo": "Orcamento",
+                "Campanha": r.get("Nome"),
+                "Acao": f"Aumentar orcamento para {r.get('Orcamento_sugerido')}",
+                "Impacto_R$": r.get("Receita_potencial_R$"),
+                "Confianca": r.get("Confianca"),
+                "Motivo": "ROAS alto e perda por orcamento"
+            })
+
+        # Dia 2: destravar rank
+        for _, r in gigantes.head(8).iterrows():
+            tasks.append({
+                "Dia": 2,
+                "Tipo": "ACOS",
+                "Campanha": r.get("Nome"),
+                "Acao": f"Subir ACOS objetivo para {r.get('ACOS_obj_sugerido')}",
+                "Impacto_R$": r.get("Receita_potencial_R$"),
+                "Confianca": r.get("Confianca"),
+                "Motivo": "Receita relevante e perda por classificacao"
+            })
+
+        # Dia 3: corte de sangria
+        for _, r in hemo.head(8).iterrows():
+            tasks.append({
+                "Dia": 3,
+                "Tipo": "Corte",
+                "Campanha": r.get("Nome"),
+                "Acao": "Revisar e pausar ou reduzir agressivamente",
+                "Impacto_R$": 0.0,
+                "Confianca": "Alta",
+                "Motivo": "Hemorragia ou ACOS acima da meta"
+            })
+
+        # Dia 5: checagem 1
+        tasks.append({
+            "Dia": 5,
+            "Tipo": "Monitoramento",
+            "Campanha": "Conta",
+            "Acao": "Checar: ROAS, ACOS real, CPC proxy, ticket medio",
+            "Impacto_R$": "",
+            "Confianca": "Media",
+            "Motivo": "Ajuste fino apos mudancas"
+        })
+
+        # Dia 10: reforco ou recuo
+        tasks.append({
+            "Dia": 10,
+            "Tipo": "Ajuste",
+            "Campanha": "Conta",
+            "Acao": "Reforcar minas que melhoraram, recuar onde ACOS estourou",
+            "Impacto_R$": "",
+            "Confianca": "Media",
+            "Motivo": "Controlar risco e consolidar lucro"
+        })
+
+        # Dia 15: fechamento
+        tasks.append({
+            "Dia": 15,
+            "Tipo": "Fechamento",
+            "Campanha": "Conta",
+            "Acao": "Fechar ciclo e preparar proximo plano com base nos vencedores",
+            "Impacto_R$": "",
+            "Confianca": "Media",
+            "Motivo": "Decisao do proximo ciclo"
+        })
+
+    plan = pd.DataFrame(tasks)
+
+    # ordena e formata
+    if not plan.empty:
+        plan["Dia"] = pd.to_numeric(plan["Dia"], errors="coerce")
+        plan = plan.sort_values(["Dia", "Tipo"], ascending=[True, True]).reset_index(drop=True)
+
+        # Impacto formatado
+        if "Impacto_R$" in plan.columns:
+            plan["Impacto_R$"] = pd.to_numeric(plan["Impacto_R$"], errors="coerce")
+
+    return plan
 
 
 def build_tables(
@@ -346,169 +587,8 @@ def build_tables(
     return kpis, pause, enter, scale, acos, camp_strat
 
 
-def _impact_budget(df_row) -> float:
-    receita = float(df_row.get("Receita", 0) or 0)
-    lost = float(df_row.get("Perdidas_Orc", 0) or 0)
-    if receita <= 0 or lost <= 0:
-        return 0.0
-    lost = max(0.0, min(lost, 0.90))
-    bruto = receita * (lost / (1 - lost))
-    return max(0.0, bruto * 0.50)
-
-
-def _impact_rank(df_row) -> float:
-    receita = float(df_row.get("Receita", 0) or 0)
-    lost = float(df_row.get("Perdidas_Class", 0) or 0)
-    if receita <= 0 or lost <= 0:
-        return 0.0
-    lost = max(0.0, min(lost, 0.90))
-    bruto = receita * (lost / (1 - lost))
-    return max(0.0, bruto * 0.30)
-
-
-def _suggest_budget(df_row) -> str:
-    orc = df_row.get("Orçamento", None)
-    lost = float(df_row.get("Perdidas_Orc", 0) or 0)
-    step = 0.30
-    if lost > 0.4:
-        step = 0.50
-    elif lost > 0.2:
-        step = 0.35
-
-    if orc is None or pd.isna(orc):
-        return f"Aumentar orcamento em {int(step*100)}%"
-
-    try:
-        orc = float(orc)
-        novo = orc * (1.0 + step)
-        return f"Orc atual {orc:.2f}, sugerido {novo:.2f}"
-    except Exception:
-        return f"Aumentar orcamento em {int(step*100)}%"
-
-
-def _suggest_acos(df_row) -> str:
-    alvo = df_row.get("ACOS Objetivo", None)
-    if alvo is None or pd.isna(alvo):
-        return "Subir ACOS alvo em +3 p.p."
-
-    try:
-        alvo = float(alvo)
-        novo = min(alvo + 0.03, 0.60)
-        return f"ACOS alvo {alvo*100:.1f}%, sugerido {novo*100:.1f}%"
-    except Exception:
-        return "Subir ACOS alvo em +3 p.p."
-
-
-def build_action_impact_table(camp_strat: pd.DataFrame) -> pd.DataFrame:
-    df = camp_strat.copy()
-
-    for c in ["Receita","Investimento","Perdidas_Orc","Perdidas_Class","Orçamento","ACOS Objetivo","ROAS"]:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    out_rows = []
-
-    for _, r in df.iterrows():
-        quad = str(r.get("Quadrante", ""))
-        nome = r.get("Nome", "")
-        receita = float(r.get("Receita", 0) or 0)
-        inv = float(r.get("Investimento", 0) or 0)
-
-        if quad == "ESCALA ORÇAMENTO":
-            impacto = _impact_budget(r)
-            out_rows.append({
-                "Campanha": nome,
-                "Quadrante": quad,
-                "Ação": EMOJI_GREEN + " Aumentar orcamento",
-                "Ajuste sugerido": _suggest_budget(r),
-                "Impacto estimado (R$)": round(impacto, 2),
-                "Confiança": "Alta" if impacto > 0 else "Media",
-                "Receita": round(receita, 2),
-                "Investimento": round(inv, 2),
-            })
-
-        elif quad == "COMPETITIVIDADE":
-            impacto = _impact_rank(r)
-            out_rows.append({
-                "Campanha": nome,
-                "Quadrante": quad,
-                "Ação": EMOJI_YELLOW + " Subir ACOS alvo",
-                "Ajuste sugerido": _suggest_acos(r),
-                "Impacto estimado (R$)": round(impacto, 2),
-                "Confiança": "Media" if impacto > 0 else "Baixa",
-                "Receita": round(receita, 2),
-                "Investimento": round(inv, 2),
-            })
-
-        elif quad == "HEMORRAGIA":
-            economia = max(0.0, inv * 0.70)
-            out_rows.append({
-                "Campanha": nome,
-                "Quadrante": quad,
-                "Ação": EMOJI_RED + " Revisar ou pausar",
-                "Ajuste sugerido": "Reduzir verba e funil, ou pausar se nao houver recuperacao",
-                "Impacto estimado (R$)": round(economia, 2),
-                "Confiança": "Alta" if inv > 0 else "Media",
-                "Receita": round(receita, 2),
-                "Investimento": round(inv, 2),
-            })
-
-    out = pd.DataFrame(out_rows)
-
-    if out.empty:
-        return out
-
-    out = out.sort_values(["Impacto estimado (R$)"], ascending=False).reset_index(drop=True)
-    return out
-
-
-def build_plan(camp_strat: pd.DataFrame, days: int = 15) -> pd.DataFrame:
-    df = camp_strat.copy()
-    df["Receita"] = pd.to_numeric(df.get("Receita", 0), errors="coerce").fillna(0)
-
-    minas = df[df.get("Quadrante", "") == "ESCALA ORÇAMENTO"].sort_values("Receita", ascending=False).head(5)
-    gigantes = df[df.get("Quadrante", "") == "COMPETITIVIDADE"].sort_values("Receita", ascending=False).head(5)
-    hemo = df[df.get("Quadrante", "") == "HEMORRAGIA"].sort_values("Investimento", ascending=False).head(5)
-
-    tasks = []
-
-    tasks.append({"Quando": "Dia 1", "Ação": "Executar ajustes principais", "O que fazer": "Aplicar aumentos e abertura de funil nas campanhas prioritarias"})
-    for _, r in minas.iterrows():
-        tasks.append({"Quando": "Dia 1", "Ação": "Aumentar orcamento", "O que fazer": f"Campanha {r.get('Nome','')}"})
-    for _, r in gigantes.iterrows():
-        tasks.append({"Quando": "Dia 2", "Ação": "Subir ACOS alvo", "O que fazer": f"Campanha {r.get('Nome','')}"})
-
-    tasks.append({"Quando": "Dia 3", "Ação": "Cortar detratores", "O que fazer": "Revisar hemorragias e pausar o que nao tem sinal de recuperacao"})
-    for _, r in hemo.iterrows():
-        tasks.append({"Quando": "Dia 3", "Ação": "Revisar ou pausar", "O que fazer": f"Campanha {r.get('Nome','')}"})
-
-    tasks.append({"Quando": "Dia 5", "Ação": "Monitorar elasticidade", "O que fazer": "Checar CPC proxy, ticket medio e custo marginal"})
-
-    if days >= 15:
-        tasks.append({"Quando": "Dia 7", "Ação": "Ajuste fino", "O que fazer": "Reforcar minas que continuam perdendo orcamento e segurar hemorragias"})
-        tasks.append({"Quando": "Dia 10", "Ação": "Reavaliar funil", "O que fazer": "Se rank continua alto, subir mais um passo de ACOS alvo nas gigantes"})
-        tasks.append({"Quando": "Dia 15", "Ação": "Fechamento e decisao", "O que fazer": "Fechar ciclo, consolidar ganhos e definir proximo passo"})
-
-    return pd.DataFrame(tasks)
-
-
-def gerar_excel(
-    kpis,
-    camp_agg,
-    pause,
-    enter,
-    scale,
-    acos,
-    camp_strat,
-    daily=None,
-    plan_df=None,
-    actions_df=None,
-    periodo_label: str = "",
-    plano_dias: int = 15,
-) -> bytes:
+def gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=None, plan_df=None) -> bytes:
     diag = {
-        "Periodo": [periodo_label],
-        "Plano_dias": [plano_dias],
         "ROAS_media": [pd.to_numeric(camp_strat["ROAS"], errors="coerce").mean()],
         "Receita_total": [pd.to_numeric(camp_strat["Receita"], errors="coerce").sum()],
         "Invest_total": [pd.to_numeric(camp_strat["Investimento"], errors="coerce").sum()],
@@ -528,16 +608,13 @@ def gerar_excel(
         highlights["Minas"].to_excel(writer, index=False, sheet_name="MINAS_LIMITADAS")
 
         if plan_df is not None:
-            plan_df.to_excel(writer, index=False, sheet_name=f"PLANO_{plano_dias}_DIAS")
-        if actions_df is not None:
-            actions_df.to_excel(writer, index=False, sheet_name="ACOES_IMPACTO_RS")
+            plan_df.to_excel(writer, index=False, sheet_name="PLANO_TATICO")
 
         pause.to_excel(writer, index=False, sheet_name="PAUSAR_CAMPANHAS")
         enter.to_excel(writer, index=False, sheet_name="ENTRAR_EM_ADS")
         scale.to_excel(writer, index=False, sheet_name="ESCALAR_ORCAMENTO")
         acos.to_excel(writer, index=False, sheet_name="SUBIR_ACOS")
         camp_agg.to_excel(writer, index=False, sheet_name="BASE_CAMPANHAS_AGG")
-
         if daily is not None:
             daily.to_excel(writer, index=False, sheet_name="SERIE_DIARIA")
 
@@ -546,7 +623,7 @@ def gerar_excel(
 
 
 # =========================
-# Rankings
+# Rankings (complementar)
 # =========================
 
 def rank_campanhas(df_camp: pd.DataFrame, top_n: int = 10) -> dict:
