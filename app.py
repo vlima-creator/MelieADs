@@ -1,9 +1,62 @@
 import streamlit as st
 from datetime import datetime
+import pandas as pd
+import numpy as np
 import ml_report as ml
 
 st.set_page_config(page_title="ML Ads - Dashboard & Relatorio", layout="wide")
 st.title("Mercado Livre Ads - Dashboard e Relatorio Automatico (Estrategico)")
+
+def safe_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
+    """Evita crash do st.dataframe/pyarrow convertendo colunas problemáticas."""
+    if df is None:
+        return pd.DataFrame()
+
+    if not isinstance(df, pd.DataFrame):
+        try:
+            df = pd.DataFrame(df)
+        except Exception:
+            return pd.DataFrame()
+
+    out = df.copy()
+
+    # nomes de colunas consistentes e únicos
+    out.columns = [str(c) for c in out.columns]
+    out = out.loc[:, ~out.columns.duplicated()].copy()
+
+    # índice simples
+    out = out.reset_index(drop=True)
+
+    # substitui inf por NaN
+    out = out.replace([np.inf, -np.inf], np.nan)
+
+    # saneia colunas
+    for c in out.columns:
+        s = out[c]
+
+        # datetime -> string
+        if pd.api.types.is_datetime64_any_dtype(s):
+            out[c] = s.dt.strftime("%Y-%m-%d")
+            continue
+
+        # lista/dict/tuple/set -> string
+        def _is_complex(x):
+            return isinstance(x, (list, dict, tuple, set))
+
+        if s.map(lambda x: _is_complex(x) if pd.notna(x) else False).any():
+            out[c] = s.astype(str)
+            continue
+
+        # objetos mistos -> tenta número, senão string
+        if s.dtype == "object":
+            num = pd.to_numeric(s, errors="coerce")
+            if num.notna().mean() >= 0.7:
+                out[c] = num
+            else:
+                out[c] = s.astype(str)
+
+    return out
+
 
 modo = st.radio(
     "Selecione o tipo de relatorio de campanhas que voce exportou:",
@@ -76,30 +129,33 @@ with tab1:
     bar = camp_agg.copy()
     for col in ["Receita", "Investimento", "Vendas", "ROAS", "CVR"]:
         if col in bar.columns:
-            bar[col] = bar[col].astype(float)
-    bar = bar.sort_values("Receita", ascending=False).head(10).set_index("Nome")
-    st.bar_chart(bar[["Receita"]])
+            bar[col] = pd.to_numeric(bar[col], errors="coerce")
+    if "Nome" in bar.columns and "Receita" in bar.columns:
+        bar = bar.sort_values("Receita", ascending=False).head(10).set_index("Nome")
+        st.bar_chart(bar[["Receita"]])
+    else:
+        st.info("Nao consegui montar o grafico de Receita por falta de colunas esperadas.")
 
     st.divider()
 
     st.subheader("Matriz de Oportunidade (Destaques)")
     cA, cB = st.columns(2)
     with cA:
-        st.write("Locomotivas (CPI 80% + perda por classificacao)")
-        st.dataframe(high["Locomotivas"], use_container_width=True)
+        st.write("Locomotivas (CPI80% + perda por classificacao)")
+        st.dataframe(safe_for_streamlit(high.get("Locomotivas")), use_container_width=True)
     with cB:
         st.write("Minas Limitadas (ROAS alto + perda por orcamento)")
-        st.dataframe(high["Minas"], use_container_width=True)
+        st.dataframe(safe_for_streamlit(high.get("Minas")), use_container_width=True)
 
     st.divider()
 
     st.subheader("Plano de Acao - 7 dias")
-    st.dataframe(plan7, use_container_width=True)
+    st.dataframe(safe_for_streamlit(plan7), use_container_width=True)
 
     st.divider()
 
     st.subheader("Painel de Controle Geral (todas as campanhas)")
-    st.dataframe(panel, use_container_width=True)
+    st.dataframe(safe_for_streamlit(panel), use_container_width=True)
 
     st.divider()
 
@@ -107,26 +163,26 @@ with tab1:
 
     st.markdown("### Top 10 melhores campanhas")
     cols_best = [c for c in ["Nome","Status","Receita","Investimento","Lucro_proxy","ROAS","ROAS_calc","ACOS_calc","ACOS Objetivo","Perdidas_Orc","Perdidas_Class","AÇÃO"] if c in r_camp["best"].columns]
-    st.dataframe(r_camp["best"][cols_best], use_container_width=True)
+    st.dataframe(safe_for_streamlit(r_camp["best"][cols_best] if cols_best else r_camp["best"]), use_container_width=True)
 
     st.markdown("### Top 10 piores campanhas, acao imediata")
     cols_worst = [c for c in ["Nome","Status","Receita","Investimento","Lucro_proxy","ROAS","ROAS_calc","ACOS_calc","ACOS Objetivo","Perdidas_Orc","Perdidas_Class","AÇÃO"] if c in r_camp["worst"].columns]
-    st.dataframe(r_camp["worst"][cols_worst], use_container_width=True)
+    st.dataframe(safe_for_streamlit(r_camp["worst"][cols_worst] if cols_worst else r_camp["worst"]), use_container_width=True)
 
     st.markdown("### Top 10 melhores anuncios patrocinados")
     cols_ads = [c for c in ["Código do anúncio","ID","Titulo do anúncio","Título do anúncio","Impressões","Cliques","Receita\n(Moeda local)","Investimento\n(Moeda local)","Lucro_proxy","ROAS_calc","ACOS_calc"] if c in r_ads["best"].columns]
-    st.dataframe(r_ads["best"][cols_ads], use_container_width=True)
+    st.dataframe(safe_for_streamlit(r_ads["best"][cols_ads] if cols_ads else r_ads["best"]), use_container_width=True)
 
     st.markdown("### Top 10 piores anuncios patrocinados, acao imediata")
     cols_ads2 = [c for c in ["Código do anúncio","ID","Titulo do anúncio","Título do anúncio","Impressões","Cliques","Receita\n(Moeda local)","Investimento\n(Moeda local)","Lucro_proxy","ROAS_calc","ACOS_calc"] if c in r_ads["worst"].columns]
-    st.dataframe(r_ads["worst"][cols_ads2], use_container_width=True)
+    st.dataframe(safe_for_streamlit(r_ads["worst"][cols_ads2] if cols_ads2 else r_ads["worst"]), use_container_width=True)
 
     if r_ads.get("best_by_campaign") is not None:
         st.markdown("### Top anuncios por campanha")
         st.caption(f"Coluna de campanha detectada: {r_ads.get('campaign_col')}")
         ccol = r_ads.get("campaign_col")
         cols_bc = [c for c in [ccol,"Código do anúncio","Receita\n(Moeda local)","Investimento\n(Moeda local)","Lucro_proxy","ROAS_calc"] if c in r_ads["best_by_campaign"].columns]
-        st.dataframe(r_ads["best_by_campaign"][cols_bc], use_container_width=True)
+        st.dataframe(safe_for_streamlit(r_ads["best_by_campaign"][cols_bc] if cols_bc else r_ads["best_by_campaign"]), use_container_width=True)
     else:
         st.info("Seu relatorio de anuncios patrocinados nao trouxe coluna de campanha. Mantive ranking geral de anuncios.")
 
@@ -135,10 +191,10 @@ with tab1:
     cC, cD = st.columns(2)
     with cC:
         st.subheader("Campanhas para PAUSAR/REVISAR")
-        st.dataframe(pause, use_container_width=True)
+        st.dataframe(safe_for_streamlit(pause), use_container_width=True)
     with cD:
         st.subheader("Anuncios para ENTRAR em Ads (organico forte)")
-        st.dataframe(enter, use_container_width=True)
+        st.dataframe(safe_for_streamlit(enter), use_container_width=True)
 
 with tab2:
     st.subheader("Gerar relatorio final (Excel)")
