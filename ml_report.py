@@ -38,7 +38,8 @@ def _coerce_campaign_numeric(df: pd.DataFrame) -> pd.DataFrame:
         "Impressões","Cliques","Receita\n(Moeda local)","Investimento\n(Moeda local)",
         "Vendas por publicidade\n(Diretas + Indiretas)","ROAS\n(Receitas / Investimento)",
         "CVR\n(Conversion rate)","% de impressões perdidas por orçamento",
-        "% de impressões perdidas por classificação","Orçamento","ACOS Objetivo"
+        "% de impressões perdidas por classificação","Orçamento","ACOS Objetivo",
+        "Orçamento médio diário"
     ]
     for c in cols_num:
         if c in df.columns:
@@ -99,6 +100,7 @@ def build_campaign_agg(camp: pd.DataFrame, modo: str) -> pd.DataFrame:
         )
     else:
         camp_agg = camp.copy()
+
         if "ROAS\n(Receitas / Investimento)" in camp_agg.columns and "ROAS" not in camp_agg.columns:
             camp_agg["ROAS"] = camp_agg["ROAS\n(Receitas / Investimento)"]
         if "CVR\n(Conversion rate)" in camp_agg.columns and "CVR" not in camp_agg.columns:
@@ -112,8 +114,6 @@ def build_campaign_agg(camp: pd.DataFrame, modo: str) -> pd.DataFrame:
             "Receita\n(Moeda local)": "Receita",
             "Investimento\n(Moeda local)": "Investimento",
             "Vendas por publicidade\n(Diretas + Indiretas)": "Vendas",
-            "Impressões": "Impressões",
-            "Cliques": "Cliques",
         })
 
         if "Orçamento" not in camp_agg.columns and "Orçamento médio diário" in camp_agg.columns:
@@ -152,8 +152,15 @@ def add_strategy_fields(
 
     if "ACOS Objetivo" in df.columns:
         df["ACOS Objetivo"] = df["ACOS Objetivo"].apply(lambda x: _pct(x)/100.0 if not pd.isna(x) else pd.NA)
-    df["Perdidas_Orc"] = df["Perdidas_Orc"].apply(lambda x: _pct(x)/100.0 if not pd.isna(x) else pd.NA) if "Perdidas_Orc" in df.columns else pd.NA
-    df["Perdidas_Class"] = df["Perdidas_Class"].apply(lambda x: _pct(x)/100.0 if not pd.isna(x) else pd.NA) if "Perdidas_Class" in df.columns else pd.NA
+    if "Perdidas_Orc" in df.columns:
+        df["Perdidas_Orc"] = df["Perdidas_Orc"].apply(lambda x: _pct(x)/100.0 if not pd.isna(x) else pd.NA)
+    else:
+        df["Perdidas_Orc"] = pd.NA
+
+    if "Perdidas_Class" in df.columns:
+        df["Perdidas_Class"] = df["Perdidas_Class"].apply(lambda x: _pct(x)/100.0 if not pd.isna(x) else pd.NA)
+    else:
+        df["Perdidas_Class"] = pd.NA
 
     df = df.sort_values("Receita", ascending=False).reset_index(drop=True)
     total = df["Receita"].sum()
@@ -163,13 +170,11 @@ def add_strategy_fields(
 
     df["Quadrante"] = "ESTÁVEL"
 
-    if "Perdidas_Orc" in df.columns:
-        minas = (df["ROAS_real"] >= roas_mina) & (df["Perdidas_Orc"] >= (lost_budget_mina/100.0))
-        df.loc[minas, "Quadrante"] = "ESCALA ORÇAMENTO"
+    minas = (df["ROAS_real"] >= roas_mina) & (df["Perdidas_Orc"] >= (lost_budget_mina/100.0))
+    df.loc[minas, "Quadrante"] = "ESCALA ORÇAMENTO"
 
-    if "Perdidas_Class" in df.columns:
-        gigantes = df["CPI_80"] & (df["Perdidas_Class"] >= (lost_rank_gigante/100.0))
-        df.loc[gigantes, "Quadrante"] = "COMPETITIVIDADE"
+    gigantes = df["CPI_80"] & (df["Perdidas_Class"] >= (lost_rank_gigante/100.0))
+    df.loc[gigantes, "Quadrante"] = "COMPETITIVIDADE"
 
     if "ACOS Objetivo" in df.columns:
         hemo = (df["ROAS_real"] < roas_hemorragia) | (df["ACOS_real"] > (df["ACOS Objetivo"] * (1.0 + acos_over_pct)))
@@ -183,8 +188,6 @@ def add_strategy_fields(
     df.loc[df["Quadrante"] == "HEMORRAGIA", "AÇÃO"] = EMOJI_RED + " Revisar/Pausar"
 
     df = df.rename(columns={
-        "Receita": "Receita",
-        "Investimento": "Investimento",
         "ROAS_real": "ROAS",
         "ACOS_real": "ACOS real",
     })
@@ -304,8 +307,9 @@ def build_opportunity_highlights(camp_strat: pd.DataFrame) -> dict:
 
     keep = ["Nome","Receita","Investimento","ROAS","Perdidas_Class","Perdidas_Orc","AÇÃO"]
     keep = [c for c in keep if c in df.columns]
-    locomotivas = locomotivas[keep].head(10)
-    minas = minas[keep].head(10)
+
+    locomotivas = locomotivas[keep].head(10).reset_index(drop=True)
+    minas = minas[keep].head(10).reset_index(drop=True)
 
     return {"Locomotivas": locomotivas, "Minas": minas}
 
@@ -348,9 +352,9 @@ def build_tables(
 
 def gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=None) -> bytes:
     diag = {
-        "ROAS": [camp_strat["ROAS"].mean()],
-        "Receita_total": [camp_strat["Receita"].sum()],
-        "Invest_total": [camp_strat["Investimento"].sum()],
+        "ROAS_media": [pd.to_numeric(camp_strat["ROAS"], errors="coerce").mean()],
+        "Receita_total": [pd.to_numeric(camp_strat["Receita"], errors="coerce").sum()],
+        "Invest_total": [pd.to_numeric(camp_strat["Investimento"], errors="coerce").sum()],
     }
     diag_df = pd.DataFrame(diag)
 
@@ -414,10 +418,8 @@ def rank_campanhas(df_camp: pd.DataFrame, top_n: int = 10) -> dict:
     df["ROAS_calc"] = df.apply(lambda r: _safe_div(r["Receita"], r["Investimento"]), axis=1)
     df["ACOS_calc"] = df.apply(lambda r: _safe_div(r["Investimento"], r["Receita"]), axis=1)
 
-    # melhores
     best = df.sort_values(["Lucro_proxy", "ROAS_calc", "Receita"], ascending=[False, False, False]).head(top_n)
 
-    # piores (gasta e não retorna)
     worst_base = df[df["Investimento"] > 0].copy()
     worst_base["Zero_receita"] = (worst_base["Receita"] <= 0).astype(int)
     worst = worst_base.sort_values(
