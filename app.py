@@ -7,13 +7,16 @@ st.caption("Suba os relatórios, clique em Gerar, receba decisões prontas.")
 
 BAD_HINTS = ["informações do relatório", "relatório de publicidade", "período", "moeda", "fuso"]
 
+# =========================
+# Leitura de arquivo (Excel escolhe melhor aba)
+# =========================
+
 def read_any(file):
     name = file.name.lower()
 
     if name.endswith(".csv"):
         return pd.read_csv(file, header=None)
 
-    # Excel: escolher a melhor aba automaticamente
     xls = pd.ExcelFile(file)
     best_df = None
     best_score = -1
@@ -25,7 +28,7 @@ def read_any(file):
         score = non_empty + (df_try.shape[1] * 50)
 
         sh_l = sh.lower()
-        if "relat" in sh_l or "campanh" in sh_l:
+        if "relat" in sh_l or "campanh" in sh_l or "anún" in sh_l or "anun" in sh_l:
             score += 5000
 
         if score > best_score:
@@ -33,6 +36,10 @@ def read_any(file):
             best_df = df_try
 
     return best_df
+
+# =========================
+# Detectar header real
+# =========================
 
 def detect_header_row(df_raw: pd.DataFrame) -> int:
     best_idx = 0
@@ -53,6 +60,7 @@ def detect_header_row(df_raw: pd.DataFrame) -> int:
 
         numeric_like = row_l.str.match(r"^\s*[\d\.,%R$\-\s]+\s*$", na=False).sum()
         texty = row_l.str.contains(r"[a-záéíóúãõç]", regex=True, na=False).sum()
+
         score = (filled_count * 1.2) + (int(texty) * 0.8) - (int(numeric_like) * 1.0)
 
         if score > best_score:
@@ -61,7 +69,36 @@ def detect_header_row(df_raw: pd.DataFrame) -> int:
 
     return best_idx
 
-def clean_numeric_series(s: pd.Series) -> pd.Series:
+# =========================
+# Colunas únicas e limpeza numérica
+# =========================
+
+def make_unique_columns(cols):
+    seen = {}
+    out = []
+    for c in cols:
+        base = str(c).strip()
+        if base == "" or base.lower() == "nan":
+            base = "col"
+        if base not in seen:
+            seen[base] = 0
+            out.append(base)
+        else:
+            seen[base] += 1
+            out.append(f"{base}__{seen[base]}")
+    return out
+
+def ensure_series(x):
+    # Se for DataFrame (coluna duplicada), pega a primeira coluna
+    if isinstance(x, pd.DataFrame):
+        if x.shape[1] == 0:
+            return pd.Series([pd.NA] * len(x))
+        return x.iloc[:, 0]
+    return x
+
+def clean_numeric_series(s):
+    s = ensure_series(s)
+
     if pd.api.types.is_numeric_dtype(s):
         return s.astype(float)
 
@@ -77,29 +114,37 @@ def clean_numeric_series(s: pd.Series) -> pd.Series:
          .str.replace(".", "", regex=False)
          .str.replace(",", ".", regex=False)
     )
+
     v = pd.to_numeric(x, errors="coerce")
     v = v.where(~is_percent, v / 100.0)
     return v.astype(float)
 
 def ml_clean(file) -> pd.DataFrame:
     df_raw = read_any(file)
+
     header_idx = detect_header_row(df_raw)
     header = df_raw.iloc[header_idx].astype(str).fillna("").tolist()
 
     df = df_raw.iloc[header_idx + 1:].copy()
-    df.columns = [str(c).strip() for c in header]
+    df.columns = make_unique_columns(header)
     df = df.reset_index(drop=True)
+
     df = df.dropna(axis=1, how="all")
     df = df.loc[:, [c for c in df.columns if str(c).strip().lower() not in ["nan", ""]]]
 
-    for c in df.columns:
+    # Converter numéricos automaticamente
+    for c in list(df.columns):
         conv = clean_numeric_series(df[c])
         if conv.notna().mean() >= 0.70:
             df[c] = conv
 
     return df
 
-def colscore(name: str, patterns):
+# =========================
+# Mapeamento automático
+# =========================
+
+def colscore(name, patterns):
     n = str(name).lower()
     score = 0
     for p, w in patterns:
@@ -107,56 +152,26 @@ def colscore(name: str, patterns):
             score += w
     return score
 
-def pick_best_column(df: pd.DataFrame, patterns, numeric_required=False):
+def pick_best_column(df, patterns, numeric_required=False):
     best = None
     best_score = -1
+
     for c in df.columns:
         s = colscore(c, patterns)
         if s <= 0:
             continue
+
         if numeric_required:
-            if not pd.api.types.is_numeric_dtype(df[c]):
-                conv = clean_numeric_series(df[c])
+            col = ensure_series(df[c])
+            if not pd.api.types.is_numeric_dtype(col):
+                conv = clean_numeric_series(col)
                 if conv.notna().mean() < 0.70:
                     continue
+
         if s > best_score:
             best_score = s
             best = c
-    return best
 
-def guess_type(df: pd.DataFrame) -> str:
-    cols = [str(c).strip().lower() for c in df.columns]
-
-    def has_any(subs):
-        return any(any(s in c for s in subs) for c in cols)
-
-    score = {"campanhas": 0, "anuncios": 0, "publicacoes": 0}
-
-    if has_any(["id do anúncio", "id do anuncio"]): score["publicacoes"] += 4
-    if has_any(["visitas únicas", "visitas unicas", "visitas"]): score["publicacoes"] += 3
-    if has_any(["variação", "variacao", "sku"]): score["publicacoes"] += 2
-    if has_any(["conversão", "conversao"]): score["publicacoes"] += 2
-    if has_any(["vendas brutas", "gmv"]): score["publicacoes"] += 1
-
-    if has_any(["nome da campanha", "campanha"]): score["campanhas"] += 4
-    if has_any(["nome"]): score["campanhas"] += 2
-    if has_any(["orçamento", "orcamento", "budget"]): score["campanhas"] += 3
-    if has_any(["acos objetivo", "acos alvo", "acos"]): score["campanhas"] += 2
-    if has_any(["perda por orçamento", "perda orçamento"]): score["campanhas"] += 2
-    if has_any(["perda por classificação", "perda por rank", "rank"]): score["campanhas"] += 2
-    if has_any(["impress", "clique"]): score["campanhas"] += 1
-    if has_any(["investimento", "gasto", "custo"]): score["campanhas"] += 1
-    if has_any(["receita", "vendas", "faturamento"]): score["campanhas"] += 1
-
-    if has_any(["mlb", "id do item", "item id"]): score["anuncios"] += 4
-    if has_any(["roas"]): score["anuncios"] += 3
-    if has_any(["acos"]): score["anuncios"] += 2
-    if has_any(["investimento", "gasto", "custo"]): score["anuncios"] += 2
-    if has_any(["receita", "vendas", "faturamento"]): score["anuncios"] += 2
-
-    best = max(score, key=score.get)
-    if score[best] < 4:
-        return "desconhecido"
     return best
 
 def fmt_money(v):
@@ -168,6 +183,10 @@ def fmt_pct(v):
     if v is None or pd.isna(v):
         return "-"
     return f"{float(v)*100:.1f}%".replace(".", ",")
+
+# =========================
+# Análises
+# =========================
 
 def analyze_campaigns(df):
     col_name = pick_best_column(df, [
@@ -189,6 +208,7 @@ def analyze_campaigns(df):
         ("vendas", 9),
         ("faturamento", 8),
         ("sales", 7),
+        ("moeda local", 2),  # comum em "Receita (Moeda local)"
     ], numeric_required=True)
 
     col_budget = pick_best_column(df, [
@@ -213,6 +233,7 @@ def analyze_campaigns(df):
 
     col_loss_rank = pick_best_column(df, [
         ("perda por classificação", 10),
+        ("perda por classificacao", 10),
         ("% perda classificação", 9),
         ("perda por rank", 8),
         ("loss rank", 7),
@@ -221,24 +242,25 @@ def analyze_campaigns(df):
 
     if col_name is None or col_spend is None or col_revenue is None:
         return None, {
-            "error": "Não consegui identificar colunas mínimas no relatório de campanhas. Preciso de algo como Nome da Campanha, Investimento/Gasto e Receita/Vendas.",
+            "error": "Não consegui identificar colunas mínimas no relatório de campanhas. Preciso de Nome, Investimento e Receita.",
             "cols": list(df.columns),
         }
 
     out = pd.DataFrame()
-    out["Campanha"] = df[col_name].astype(str)
-    out["Investimento"] = df[col_spend]
-    out["Receita"] = df[col_revenue]
+    out["Campanha"] = ensure_series(df[col_name]).astype(str)
+    out["Investimento"] = clean_numeric_series(df[col_spend])
+    out["Receita"] = clean_numeric_series(df[col_revenue])
 
-    out["Orçamento_atual"] = df[col_budget] if col_budget else pd.NA
-    out["ACOS_objetivo"] = df[col_acos_target] if col_acos_target else pd.NA
-    out["Perda_orc"] = df[col_loss_budget] if col_loss_budget else pd.NA
-    out["Perda_rank"] = df[col_loss_rank] if col_loss_rank else pd.NA
+    out["Orçamento_atual"] = clean_numeric_series(df[col_budget]) if col_budget else pd.NA
+    out["ACOS_objetivo"] = clean_numeric_series(df[col_acos_target]) if col_acos_target else pd.NA
+    out["Perda_orc"] = clean_numeric_series(df[col_loss_budget]) if col_loss_budget else pd.NA
+    out["Perda_rank"] = clean_numeric_series(df[col_loss_rank]) if col_loss_rank else pd.NA
 
     out["ROAS"] = out["Receita"] / out["Investimento"].replace(0, pd.NA)
     out["ACOS_real"] = out["Investimento"] / out["Receita"].replace(0, pd.NA)
 
     out = out.sort_values("Receita", ascending=False).reset_index(drop=True)
+
     total_rev = out["Receita"].sum(skipna=True)
     total_inv = out["Investimento"].sum(skipna=True)
 
@@ -290,12 +312,20 @@ def analyze_sponsored_ads(df):
         return None, {"error": "Não consegui mapear Investimento e Receita no relatório de anúncios.", "cols": list(df.columns)}
 
     out = pd.DataFrame()
-    out["MLB"] = df[col_mlb].astype(str) if col_mlb else "-"
-    out["Anúncio"] = df[col_title].astype(str) if col_title else "Anúncio"
-    out["Investimento"] = df[col_spend]
-    out["Receita"] = df[col_revenue]
-    out["ROAS"] = df[col_roas] if col_roas else out["Receita"] / out["Investimento"].replace(0, pd.NA)
-    out["ACOS_real"] = df[col_acos] if col_acos else out["Investimento"] / out["Receita"].replace(0, pd.NA)
+    out["MLB"] = ensure_series(df[col_mlb]).astype(str) if col_mlb else "-"
+    out["Anúncio"] = ensure_series(df[col_title]).astype(str) if col_title else "Anúncio"
+    out["Investimento"] = clean_numeric_series(df[col_spend])
+    out["Receita"] = clean_numeric_series(df[col_revenue])
+
+    if col_roas:
+        out["ROAS"] = clean_numeric_series(df[col_roas])
+    else:
+        out["ROAS"] = out["Receita"] / out["Investimento"].replace(0, pd.NA)
+
+    if col_acos:
+        out["ACOS_real"] = clean_numeric_series(df[col_acos])
+    else:
+        out["ACOS_real"] = out["Investimento"] / out["Receita"].replace(0, pd.NA)
 
     out.loc[out["ACOS_real"] > 2, "ACOS_real"] = out.loc[out["ACOS_real"] > 2, "ACOS_real"] / 100.0
 
@@ -316,6 +346,10 @@ def analyze_sponsored_ads(df):
     }
     return out, meta
 
+# =========================
+# UI
+# =========================
+
 period_label = st.text_input("Rótulo do período (opcional)", value="Últimos 15 dias")
 
 camp_file = st.file_uploader("Relatório de Campanhas (Excel ou CSV)", type=["csv", "xlsx", "xls"])
@@ -332,38 +366,22 @@ if st.button("Gerar relatório", type="primary", use_container_width=True):
         df_ads = ml_clean(ads_file)
         df_pub = ml_clean(pub_file) if pub_file else None
 
-    t1 = guess_type(df_camp)
-    t2 = guess_type(df_ads)
-
     with st.expander("Colunas detectadas (debug)", expanded=False):
-        st.write("Tipo Campanhas (arquivo 1):", t1)
-        st.write(list(df_camp.columns))
-        st.write("Tipo Anúncios (arquivo 2):", t2)
-        st.write(list(df_ads.columns))
+        st.write("Campanhas:", list(df_camp.columns))
+        st.write("Anúncios:", list(df_ads.columns))
         if df_pub is not None:
-            st.write("Tipo Publicações (arquivo 3):", guess_type(df_pub))
-            st.write(list(df_pub.columns))
-
-    if t1 == "publicacoes":
-        st.error("No campo Campanhas você subiu um relatório de Publicações. Troque para o Relatorio_campanhas.")
-        st.stop()
-
-    if t2 == "publicacoes":
-        st.error("No campo Anúncios patrocinados você subiu um relatório de Publicações. Troque para o Relatorio_anuncios_patrocinados.")
-        st.stop()
+            st.write("Publicações:", list(df_pub.columns))
 
     camp_out, camp_meta = analyze_campaigns(df_camp)
     if camp_out is None:
         st.error(camp_meta["error"])
-        st.caption("Colunas detectadas no seu arquivo de Campanhas:")
-        st.write(camp_meta["cols"])
+        st.write("Colunas detectadas:", camp_meta["cols"])
         st.stop()
 
     ads_out, ads_meta = analyze_sponsored_ads(df_ads)
     if ads_out is None:
         st.error(ads_meta["error"])
-        st.caption("Colunas detectadas no seu arquivo de Anúncios:")
-        st.write(ads_meta["cols"])
+        st.write("Colunas detectadas:", ads_meta["cols"])
         st.stop()
 
     st.markdown("## Relatório Estratégico de Performance")
@@ -388,35 +406,44 @@ if st.button("Gerar relatório", type="primary", use_container_width=True):
     st.markdown("### 2. Análise de Oportunidades (Matriz CPI)")
     game = camp_meta["gamechangers"]
 
-    st.markdown("**Locomotivas**")
-    st.dataframe(game[game["Quadrante"] == "COMPETITIVIDADE"][["Campanha","Receita","Investimento","ROAS","AÇÃO RECOMENDADA"]], use_container_width=True)
+    st.markdown("Locomotivas")
+    st.dataframe(
+        game[game["Quadrante"] == "COMPETITIVIDADE"][["Campanha", "Receita", "Investimento", "ROAS", "AÇÃO RECOMENDADA"]],
+        use_container_width=True
+    )
 
-    st.markdown("**Minas limitadas**")
-    st.dataframe(game[game["Quadrante"] == "ESCALA DE ORÇAMENTO"][["Campanha","Receita","Investimento","ROAS","AÇÃO RECOMENDADA"]], use_container_width=True)
+    st.markdown("Minas limitadas")
+    st.dataframe(
+        game[game["Quadrante"] == "ESCALA DE ORÇAMENTO"][["Campanha", "Receita", "Investimento", "ROAS", "AÇÃO RECOMENDADA"]],
+        use_container_width=True
+    )
 
-    st.markdown("**Hemorragias**")
-    st.dataframe(game[game["Quadrante"] == "HEMORRAGIA"][["Campanha","Receita","Investimento","ROAS","ACOS_real","AÇÃO RECOMENDADA"]], use_container_width=True)
+    st.markdown("Hemorragias")
+    st.dataframe(
+        game[game["Quadrante"] == "HEMORRAGIA"][["Campanha", "Receita", "Investimento", "ROAS", "ACOS_real", "AÇÃO RECOMENDADA"]],
+        use_container_width=True
+    )
 
     st.markdown("### 3. Plano de Ação Tático (Próximos 7 Dias)")
     minas = game[game["Quadrante"] == "ESCALA DE ORÇAMENTO"].head(5)
     loco = game[game["Quadrante"] == "COMPETITIVIDADE"].head(5)
     hemo = game[game["Quadrante"] == "HEMORRAGIA"].head(5)
 
-    st.markdown("**Dia 1 (Destravar):**")
+    st.markdown("Dia 1, destravar")
     if len(minas):
         for n in minas["Campanha"].tolist():
             st.write(f"- 🟢 Aumente orçamento: {n}")
     else:
         st.write("- 🟢 Escale campanhas com ROAS alto.")
 
-    st.markdown("**Dia 2 (Competir):**")
+    st.markdown("Dia 2, competir")
     if len(loco):
         for n in loco["Campanha"].tolist():
             st.write(f"- 🟡 Suba ACOS objetivo: {n}")
     else:
         st.write("- 🟡 Abra funil nas campanhas com volume e ROAS médio.")
 
-    st.markdown("**Dia 3 (Estancar):**")
+    st.markdown("Dia 3, estancar")
     if len(hemo):
         for n in hemo["Campanha"].tolist():
             st.write(f"- 🔴 Corte ou revise: {n}")
@@ -424,17 +451,17 @@ if st.button("Gerar relatório", type="primary", use_container_width=True):
         st.write("- 🔴 Corte o que está abaixo do ROAS mínimo.")
 
     st.markdown("### 4. Painel Geral")
-    painel = camp_out[["Campanha","Orçamento_atual","ACOS_objetivo","ROAS","Perda_orc","Perda_rank","AÇÃO RECOMENDADA"]]
-    st.dataframe(painel, use_container_width=True)
+    painel_cols = ["Campanha", "Orçamento_atual", "ACOS_objetivo", "ROAS", "Perda_orc", "Perda_rank", "AÇÃO RECOMENDADA"]
+    st.dataframe(camp_out[painel_cols], use_container_width=True)
 
-    st.markdown("## Corte de Sangria (Anúncios patrocinados)")
+    st.markdown("## Corte de Sangria, Anúncios patrocinados")
     a, b, c = st.columns(3)
     with a:
-        st.markdown("**🔴 Sanguessugas**")
-        st.dataframe(ads_meta["top_sanguessugas"][["MLB","Anúncio","Investimento","Receita","ROAS","ACOS_real"]], use_container_width=True)
+        st.markdown("Sanguessugas")
+        st.dataframe(ads_meta["top_sanguessugas"][["MLB", "Anúncio", "Investimento", "Receita", "ROAS", "ACOS_real"]], use_container_width=True)
     with b:
-        st.markdown("**🟡 Gastões**")
-        st.dataframe(ads_meta["top_gastoes"][["MLB","Anúncio","Investimento","Receita","ROAS","ACOS_real"]], use_container_width=True)
+        st.markdown("Gastões")
+        st.dataframe(ads_meta["top_gastoes"][["MLB", "Anúncio", "Investimento", "Receita", "ROAS", "ACOS_real"]], use_container_width=True)
     with c:
-        st.markdown("**🟢 Estrelas**")
-        st.dataframe(ads_meta["top_estrelas"][["MLB","Anúncio","Investimento","Receita","ROAS","ACOS_real"]], use_container_width=True)
+        st.markdown("Estrelas")
+        st.dataframe(ads_meta["top_estrelas"][["MLB", "Anúncio", "Investimento", "Receita", "ROAS", "ACOS_real"]], use_container_width=True)
