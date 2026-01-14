@@ -403,3 +403,88 @@ def gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=Non
             daily.to_excel(writer, index=False, sheet_name="SERIE_DIARIA")
     out.seek(0)
     return out.read()
+def _safe_div(a, b):
+    try:
+        if b is None or b == 0:
+            return 0.0
+        return float(a) / float(b)
+    except Exception:
+        return 0.0
+
+
+def rank_campanhas(camp_agg: pd.DataFrame, top_n: int = 10) -> dict:
+    df = camp_agg.copy()
+
+    if "Receita" not in df.columns or "Investimento" not in df.columns:
+        return {"best": df.head(0), "worst": df.head(0)}
+
+    df["Lucro_proxy"] = df["Receita"].fillna(0) - df["Investimento"].fillna(0)
+    df["ROAS_calc"] = df.apply(lambda r: _safe_div(r.get("Receita", 0), r.get("Investimento", 0)), axis=1)
+
+    # melhores: lucro proxy alto, depois roas, depois receita
+    best = (
+        df.sort_values(["Lucro_proxy", "ROAS_calc", "Receita"], ascending=[False, False, False])
+          .head(top_n)
+    )
+
+    # piores: invest alto e roas baixo
+    worst = (
+        df[df["Investimento"].fillna(0) > 0]
+        .sort_values(["Investimento", "ROAS_calc", "Lucro_proxy"], ascending=[False, True, True])
+        .head(top_n)
+    )
+
+    return {"best": best, "worst": worst}
+
+
+def _find_campaign_col(pat: pd.DataFrame):
+    # tenta achar uma coluna de campanha dentro do patrocinados
+    candidates = []
+    for c in pat.columns:
+        cl = str(c).lower()
+        if "campanh" in cl:
+            candidates.append(c)
+    return candidates[0] if candidates else None
+
+
+def rank_anuncios(pat: pd.DataFrame, top_n: int = 10) -> dict:
+    df = pat.copy()
+
+    # tenta mapear receita e investimento pelos nomes comuns do ML
+    col_rec = "Receita\n(Moeda local)" if "Receita\n(Moeda local)" in df.columns else None
+    col_inv = "Investimento\n(Moeda local)" if "Investimento\n(Moeda local)" in df.columns else None
+
+    if col_rec is None or col_inv is None:
+        return {"best": df.head(0), "worst": df.head(0), "best_by_campaign": None}
+
+    df["Receita"] = pd.to_numeric(df[col_rec], errors="coerce").fillna(0)
+    df["Investimento"] = pd.to_numeric(df[col_inv], errors="coerce").fillna(0)
+    df["ROAS_calc"] = df.apply(lambda r: _safe_div(r["Receita"], r["Investimento"]), axis=1)
+    df["Lucro_proxy"] = df["Receita"] - df["Investimento"]
+
+    # melhores anúncios: lucro proxy alto e roas alto
+    best = (
+        df.sort_values(["Lucro_proxy", "ROAS_calc", "Receita"], ascending=[False, False, False])
+          .head(top_n)
+    )
+
+    # piores anúncios: gastando e não retornando
+    worst_base = df[df["Investimento"] > 0].copy()
+    worst_base["Zero_receita"] = (worst_base["Receita"] <= 0).astype(int)
+
+    worst = (
+        worst_base.sort_values(["Zero_receita", "Investimento", "ROAS_calc"], ascending=[False, False, True])
+                  .head(top_n)
+    )
+
+    # por campanha, se existir coluna
+    camp_col = _find_campaign_col(df)
+    best_by_campaign = None
+    if camp_col is not None:
+        best_by_campaign = (
+            df.sort_values(["Lucro_proxy", "ROAS_calc"], ascending=[False, False])
+              .groupby(camp_col, as_index=False)
+              .head(top_n)
+        )
+
+    return {"best": best, "worst": worst, "best_by_campaign": best_by_campaign, "campaign_col": camp_col}
