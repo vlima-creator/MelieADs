@@ -7,8 +7,8 @@ import ml_report as ml
 st.set_page_config(page_title="ML Ads - Dashboard & Relatorio", layout="wide")
 st.title("Mercado Livre Ads - Dashboard e Relatorio Automatico (Estrategico)")
 
+
 def safe_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
-    """Evita crash do st.dataframe/pyarrow convertendo colunas problemáticas."""
     if df is None:
         return pd.DataFrame()
 
@@ -19,27 +19,18 @@ def safe_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
             return pd.DataFrame()
 
     out = df.copy()
-
-    # nomes de colunas consistentes e únicos
     out.columns = [str(c) for c in out.columns]
     out = out.loc[:, ~out.columns.duplicated()].copy()
-
-    # índice simples
     out = out.reset_index(drop=True)
-
-    # substitui inf por NaN
     out = out.replace([np.inf, -np.inf], np.nan)
 
-    # saneia colunas
     for c in out.columns:
         s = out[c]
 
-        # datetime -> string
         if pd.api.types.is_datetime64_any_dtype(s):
             out[c] = s.dt.strftime("%Y-%m-%d")
             continue
 
-        # lista/dict/tuple/set -> string
         def _is_complex(x):
             return isinstance(x, (list, dict, tuple, set))
 
@@ -47,7 +38,6 @@ def safe_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = s.astype(str)
             continue
 
-        # objetos mistos -> tenta número, senão string
         if s.dtype == "object":
             num = pd.to_numeric(s, errors="coerce")
             if num.notna().mean() >= 0.7:
@@ -64,6 +54,12 @@ modo = st.radio(
     horizontal=True
 )
 modo_key = "consolidado" if "CONSOLIDADO" in modo else "diario"
+
+cA, cB = st.columns([1, 1])
+with cA:
+    plano_dias = st.selectbox("Plano tatico", options=[7, 15], index=1)
+with cB:
+    periodo_label = st.text_input("Rotulo do periodo (opcional)", value="Ultimos 15 dias")
 
 with st.expander("Regras (ajustaveis)"):
     c1, c2, c3, c4 = st.columns(4)
@@ -102,7 +98,10 @@ if modo_key == "diario":
 diagnosis = ml.build_executive_diagnosis(camp_strat, daily=daily)
 panel = ml.build_control_panel(camp_strat)
 high = ml.build_opportunity_highlights(camp_strat)
-plan7 = ml.build_7_day_plan(camp_strat)
+
+# Plano e impacto em reais
+plan_df = ml.build_plan(camp_strat, days=int(plano_dias))
+actions_df = ml.build_action_impact_table(camp_strat)
 
 # Rankings
 r_camp = ml.rank_campanhas(camp_strat, top_n=10)
@@ -112,6 +111,7 @@ tab1, tab2 = st.tabs(["Dashboard", "Gerar Excel"])
 
 with tab1:
     st.subheader("Diagnostico Executivo")
+    st.write(f"Periodo: **{periodo_label}**")
     st.write(f"ROAS da conta: **{diagnosis['ROAS']:.2f}** | ACOS real: **{diagnosis['ACOS_real']:.2f}**")
     st.write(f"**Veredito:** {diagnosis['Veredito']}")
 
@@ -125,7 +125,7 @@ with tab1:
 
     st.divider()
 
-    st.subheader("Top 10 campanhas por Receita (fixo)")
+    st.subheader("Top 10 campanhas por Receita")
     bar = camp_agg.copy()
     for col in ["Receita", "Investimento", "Vendas", "ROAS", "CVR"]:
         if col in bar.columns:
@@ -139,18 +139,24 @@ with tab1:
     st.divider()
 
     st.subheader("Matriz de Oportunidade (Destaques)")
-    cA, cB = st.columns(2)
-    with cA:
+    c1, c2 = st.columns(2)
+    with c1:
         st.write("Locomotivas (CPI80% + perda por classificacao)")
         st.dataframe(safe_for_streamlit(high.get("Locomotivas")), use_container_width=True)
-    with cB:
+    with c2:
         st.write("Minas Limitadas (ROAS alto + perda por orcamento)")
         st.dataframe(safe_for_streamlit(high.get("Minas")), use_container_width=True)
 
     st.divider()
 
-    st.subheader("Plano de Acao - 7 dias")
-    st.dataframe(safe_for_streamlit(plan7), use_container_width=True)
+    st.subheader(f"Plano tatico, {plano_dias} dias")
+    st.dataframe(safe_for_streamlit(plan_df), use_container_width=True)
+
+    st.divider()
+
+    st.subheader("Acoes recomendadas com impacto estimado em R$")
+    st.caption("Impacto e uma estimativa conservadora com base nas perdas de orcamento e rank do periodo.")
+    st.dataframe(safe_for_streamlit(actions_df), use_container_width=True)
 
     st.divider()
 
@@ -188,11 +194,11 @@ with tab1:
 
     st.divider()
 
-    cC, cD = st.columns(2)
-    with cC:
+    c3, c4 = st.columns(2)
+    with c3:
         st.subheader("Campanhas para PAUSAR/REVISAR")
         st.dataframe(safe_for_streamlit(pause), use_container_width=True)
-    with cD:
+    with c4:
         st.subheader("Anuncios para ENTRAR em Ads (organico forte)")
         st.dataframe(safe_for_streamlit(enter), use_container_width=True)
 
@@ -200,7 +206,14 @@ with tab2:
     st.subheader("Gerar relatorio final (Excel)")
     if st.button("Gerar e baixar Excel"):
         with st.spinner("Gerando Excel..."):
-            bytes_xlsx = ml.gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=daily)
+            bytes_xlsx = ml.gerar_excel(
+                kpis, camp_agg, pause, enter, scale, acos, camp_strat,
+                daily=daily,
+                plan_df=plan_df,
+                actions_df=actions_df,
+                periodo_label=periodo_label,
+                plano_dias=int(plano_dias),
+            )
 
         nome = f"Relatorio_ML_ADs_Estrategico_{datetime.now().strftime('%Y-%m-%d_%H%M')}.xlsx"
         st.download_button(
