@@ -1,5 +1,5 @@
 import streamlit as st
+import pandas as pd
 
-st.set_page_config(page_title="ML Ads", layout="wide")
-st.title("OK, app no ar")
-st.write("Agora vamos ligar o processamento aos poucos.")
+st.title("OK com pandas")
+st.write("pandas:", pd.__version__)
