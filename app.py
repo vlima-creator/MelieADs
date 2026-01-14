@@ -3,42 +3,58 @@ import pandas as pd
 import numpy as np
 import ml_report as ml
 
-st.set_page_config(layout="wide", page_title="Mercado Livre Ads – Decisor Estratégico")
+st.set_page_config(
+    layout="wide",
+    page_title="Mercado Livre Ads – Relatório Estratégico"
+)
 
 # =========================
-# Proteção de DataFrames
+# Helpers
 # =========================
 
 def safe_for_streamlit(df):
-    if df is None:
+    if df is None or not isinstance(df, pd.DataFrame):
         return pd.DataFrame()
-    df = df.copy()
-    df.columns = [str(c) for c in df.columns]
-    df = df.replace([np.inf, -np.inf], np.nan)
-    df = df.reset_index(drop=True)
 
-    for c in df.columns:
-        if df[c].dtype == "object":
-            df[c] = df[c].astype(str)
+    out = df.copy()
+    out.columns = [str(c) for c in out.columns]
+    out = out.replace([np.inf, -np.inf], np.nan)
+    out = out.reset_index(drop=True)
 
-    return df
+    for c in out.columns:
+        if out[c].dtype == "object":
+            out[c] = out[c].astype(str)
+
+    return out
 
 
 # =========================
-# Upload
+# UI
 # =========================
 
 st.title("📊 Mercado Livre Ads – Relatório Estratégico")
 
-camp_file = st.file_uploader("Relatório de Campanhas", type=["xlsx", "csv"])
+st.markdown(
+    "Faça upload do **Relatório de Campanhas** para gerar a análise estratégica."
+)
+
+camp_file = st.file_uploader(
+    "Relatório de Campanhas (Excel ou CSV)",
+    type=["xlsx", "csv"]
+)
+
 if camp_file is None:
+    st.info("Aguardando upload do relatório de campanhas.")
     st.stop()
 
-camp = pd.read_excel(camp_file)
+# =========================
+# Load & Process
+# =========================
 
-# =========================
-# Processamento
-# =========================
+if camp_file.name.endswith(".csv"):
+    camp = pd.read_csv(camp_file)
+else:
+    camp = pd.read_excel(camp_file)
 
 camp = ml.enrich_campaign_metrics(camp)
 camp = ml.classify_quadrants(camp)
@@ -69,21 +85,25 @@ ranks = ml.rank_campanhas(camp)
 st.subheader("📌 Matriz de Oportunidade")
 st.dataframe(
     safe_for_streamlit(
-        camp[["Nome", "Quadrante", "Receita", "Investimento", "ROAS", "Impacto_R$", "Ação"]]
+        camp[
+            ["Nome", "Quadrante", "Receita", "Investimento", "ROAS", "Impacto_R$", "Ação"]
+        ]
     ),
     use_container_width=True
 )
 
 st.subheader("💰 Impacto Financeiro Estimado")
 st.metric(
-    "Impacto total estimado (R$)",
+    "Impacto total estimado",
     f"R$ {camp['Impacto_R$'].sum():,.2f}"
 )
 
 st.subheader("🔥 Top 10 Melhores Campanhas")
 st.dataframe(
     safe_for_streamlit(
-        ranks["best"][["Nome", "Receita", "Investimento", "ROAS", "Lucro_proxy"]]
+        ranks["best"][
+            ["Nome", "Receita", "Investimento", "ROAS", "Lucro_proxy"]
+        ]
     ),
     use_container_width=True
 )
@@ -91,7 +111,9 @@ st.dataframe(
 st.subheader("🚨 Top 10 Piores Campanhas")
 st.dataframe(
     safe_for_streamlit(
-        ranks["worst"][["Nome", "Receita", "Investimento", "ROAS", "Lucro_proxy"]]
+        ranks["worst"][
+            ["Nome", "Receita", "Investimento", "ROAS", "Lucro_proxy"]
+        ]
     ),
     use_container_width=True
 )
