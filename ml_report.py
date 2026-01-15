@@ -1,4 +1,3 @@
-# ml_report.py
 import pandas as pd
 from io import BytesIO
 
@@ -7,11 +6,11 @@ EMOJI_YELLOW = "\U0001F7E1"
 EMOJI_BLUE = "\U0001F535"
 EMOJI_RED = "\U0001F534"
 
-def _read_any(file):
+def _read_any(file, header=0):
     name = getattr(file, "name", "") or ""
     if name.lower().endswith(".csv"):
-        return pd.read_csv(file)
-    return pd.read_excel(file)
+        return pd.read_csv(file, header=header)
+    return pd.read_excel(file, header=header)
 
 def _normalize(s: str) -> str:
     if s is None:
@@ -21,33 +20,23 @@ def _normalize(s: str) -> str:
     s = " ".join(s.split())
     return s
 
-def _auto_header_df(file, required_any=None, max_rows=30):
-    raw = _read_any(file)
-    if required_any is None or raw.empty:
-        raw.columns = [str(c).strip() for c in raw.columns]
-        return raw
+def _pick_col(cols, candidates):
+    cols = list(cols)
+    cols_n = { _normalize(c): c for c in cols }
 
-    required_any_n = [_normalize(x) for x in required_any]
-    header_row = None
+    # 1) match exato
+    for cand in candidates:
+        cn = _normalize(cand)
+        if cn in cols_n:
+            return cols_n[cn]
 
-    preview = raw.head(max_rows).copy()
-    for i in range(len(preview)):
-        row = preview.iloc[i].tolist()
-        row_n = [_normalize(x) for x in row]
-        hit = any(any(req in cell for cell in row_n) for req in required_any_n)
-        if hit:
-            header_row = i
-            break
-
-    if header_row is None:
-        raw.columns = [str(c).strip() for c in raw.columns]
-        return raw
-
-    df = _read_any(file)
-    df.columns = df.iloc[header_row].astype(str).tolist()
-    df = df.iloc[header_row + 1 :].reset_index(drop=True)
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
+    # 2) contem
+    for cand in candidates:
+        cn = _normalize(cand)
+        for k, orig in cols_n.items():
+            if cn in k:
+                return orig
+    return None
 
 def _to_num(series):
     s = series.astype(str).str.strip()
@@ -57,25 +46,61 @@ def _to_num(series):
     s = s.str.replace(",", ".", regex=False)
     return pd.to_numeric(s, errors="coerce")
 
-def _pick_col(cols, candidates):
-    cols_n = {_normalize(c): c for c in cols}
-    for cand in candidates:
-        cn = _normalize(cand)
-        for k, orig in cols_n.items():
-            if cn == k:
-                return orig
-    for cand in candidates:
-        cn = _normalize(cand)
-        for k, orig in cols_n.items():
-            if cn in k:
-                return orig
-    return None
+def _auto_header_df(file, must_have_any=None, max_rows=40):
+    """
+    Lê arquivo e tenta detectar a linha correta de cabeçalho.
+    Funciona melhor com relatórios do ML que vem com linhas extras antes do header.
+    """
+    # leitura bruta sem header
+    raw = _read_any(file, header=None)
+
+    if raw is None or raw.empty:
+        df = _read_any(file, header=0)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+
+    if not must_have_any:
+        df = _read_any(file, header=0)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+
+    must = [_normalize(x) for x in must_have_any]
+
+    best_row = None
+    best_score = -1
+
+    preview = raw.head(max_rows).copy()
+
+    for i in range(len(preview)):
+        row = preview.iloc[i].tolist()
+        row_n = [_normalize(x) for x in row]
+
+        score = 0
+        for m in must:
+            if any(m in cell for cell in row_n):
+                score += 1
+
+        # regra: precisa bater pelo menos 2 termos para ser considerado header
+        if score > best_score and score >= 2:
+            best_score = score
+            best_row = i
+
+    if best_row is None:
+        # fallback: tenta o header padrão
+        df = _read_any(file, header=0)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+
+    df = raw.copy()
+    df.columns = df.iloc[best_row].astype(str).tolist()
+    df = df.iloc[best_row + 1 :].reset_index(drop=True)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
 
 # -----------------------------
-# ID seguro (evita perder precisao)
+# ID seguro
 # -----------------------------
 def _clean_id_series(s: pd.Series) -> pd.Series:
-    # Mantem somente digitos e retorna string
     x = s.astype(str).str.strip()
     x = x.str.replace(r"\.0$", "", regex=True)
     x = x.str.replace(r"[^\d]", "", regex=True)
@@ -86,44 +111,42 @@ def _detect_ad_id_col(df: pd.DataFrame):
     for cand in ["ID do anúncio", "Id do anúncio", "ID do anuncio", "Id do anuncio", "ID", "id_anuncio"]:
         if cand in df.columns:
             return cand
-    return None
+    # fallback por contem
+    c = _pick_col(df.columns, ["id do anuncio", "id do anúncio", "id"])
+    return c
 
 def _detect_campaign_col(df: pd.DataFrame):
-    for cand in ["Nome da campanha", "Campanha", "campaign_name", "Nome Campanha"]:
+    for cand in ["Nome da campanha", "Campanha", "campaign_name", "Nome Campanha", "Nome da Campanha"]:
         if cand in df.columns:
             return cand
-    return None
+    return _pick_col(df.columns, ["campanha", "nome da campanha"])
 
 # -----------------------------
 # loaders
 # -----------------------------
 def load_organico(organico_file) -> pd.DataFrame:
-    df = _auto_header_df(
+    return _auto_header_df(
         organico_file,
-        required_any=["ID do anúncio", "Vendas brutas", "Unidades vendidas", "Visitas únicas"],
+        must_have_any=["id do anúncio", "vendas brutas", "visitas únicas", "unidades"],
     )
-    return df
 
 def load_patrocinados(patro_file) -> pd.DataFrame:
-    df = _auto_header_df(
+    return _auto_header_df(
         patro_file,
-        required_any=["ID do anúncio", "Investimento", "Vendas brutas", "Quantidade de vendas"],
+        must_have_any=["id do anúncio", "investimento", "vendas brutas", "quantidade de vendas"],
     )
-    return df
 
 def load_campanhas_consolidado(camp_file) -> pd.DataFrame:
-    df = _auto_header_df(
+    return _auto_header_df(
         camp_file,
-        required_any=["Nome da campanha", "Investimento", "Receita", "Vendas", "ACOS"],
+        must_have_any=["campanha", "investimento", "receita", "vendas"],
     )
-    return df
 
 def load_campanhas_diario(camp_file) -> pd.DataFrame:
-    df = _auto_header_df(
+    return _auto_header_df(
         camp_file,
-        required_any=["Nome da campanha", "Desde", "Investimento", "Receita"],
+        must_have_any=["campanha", "desde", "investimento", "receita"],
     )
-    return df
 
 # -----------------------------
 # build campaign agg
@@ -133,17 +156,22 @@ def build_campaign_agg(camp: pd.DataFrame, modo_key: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["Nome", "Investimento", "Receita", "Vendas", "Orçamento", "ACOS_Objetivo", "Perdidas_Orc", "Perdidas_Class"])
 
-    c_nome = _pick_col(df.columns, ["Nome da campanha", "Nome", "Campanha"])
-    c_inv = _pick_col(df.columns, ["Investimento", "Gasto", "Spend"])
-    c_rec = _pick_col(df.columns, ["Receita", "Vendas (R$)", "Sales", "Receita/Vendas"])
-    c_vend = _pick_col(df.columns, ["Vendas", "Quantidade de vendas"])
-    c_orc = _pick_col(df.columns, ["Orçamento médio diário", "Orçamento", "Budget"])
-    c_acos_obj = _pick_col(df.columns, ["ACOS Objetivo", "ACOS alvo", "ACOS objetivo"])
-    c_porc_orc = _pick_col(df.columns, ["Perda por orçamento", "% perda por orçamento", "Perdidas por orçamento"])
-    c_porc_rank = _pick_col(df.columns, ["Perda por classificação", "% perda por classificação", "Perda por rank", "Perdidas por classificação"])
+    c_nome = _pick_col(df.columns, ["Nome da campanha", "Nome da Campanha", "Campanha", "Nome", "Campaign"])
+    c_inv = _pick_col(df.columns, ["Investimento", "Gasto", "Custo", "Spend", "Investimento (BRL)", "Gasto (BRL)"])
+    c_rec = _pick_col(df.columns, ["Receita", "Vendas (R$)", "Sales", "Receita/Vendas", "Receita (BRL)", "Vendas brutas (BRL)", "Vendas brutas"])
+    c_vend = _pick_col(df.columns, ["Vendas", "Quantidade de vendas", "Pedidos", "Total de vendas"])
+    c_orc = _pick_col(df.columns, ["Orçamento médio diário", "Orçamento", "Budget", "Orcamento", "Orçamento diário"])
+    c_acos_obj = _pick_col(df.columns, ["ACOS Objetivo", "ACOS alvo", "ACOS objetivo", "ACOS Alvo"])
+    c_porc_orc = _pick_col(df.columns, ["Perda por orçamento", "% perda por orçamento", "Perdidas por orçamento", "Perda orçamento"])
+    c_porc_rank = _pick_col(df.columns, ["Perda por classificação", "% perda por classificação", "Perda por rank", "Perdidas por classificação", "Perda classificação"])
 
     if c_nome is None or c_inv is None or c_rec is None:
-        raise ValueError("Campanhas: preciso de Nome da Campanha, Investimento e Receita.")
+        # erro claro e útil
+        cols = ", ".join([str(c) for c in df.columns[:30]])
+        raise ValueError(
+            "Campanhas: preciso de colunas de Nome da campanha, Investimento e Receita. "
+            "Colunas detectadas no seu arquivo: " + cols
+        )
 
     df["Nome"] = df[c_nome].astype(str).str.strip()
     df["Investimento"] = _to_num(df[c_inv]).fillna(0)
@@ -194,8 +222,8 @@ def build_daily_from_diario(camp: pd.DataFrame) -> pd.DataFrame:
         return df
 
     c_date = _pick_col(df.columns, ["Desde", "Data", "Dia"])
-    c_inv = _pick_col(df.columns, ["Investimento", "Gasto", "Spend"])
-    c_rec = _pick_col(df.columns, ["Receita", "Vendas (R$)", "Sales"])
+    c_inv = _pick_col(df.columns, ["Investimento", "Gasto", "Custo", "Spend"])
+    c_rec = _pick_col(df.columns, ["Receita", "Vendas (R$)", "Sales", "Vendas brutas"])
 
     if not (c_date and c_inv and c_rec):
         return pd.DataFrame()
@@ -333,7 +361,6 @@ def build_plan(camp_strat: pd.DataFrame, days: int = 7) -> pd.DataFrame:
     df = camp_strat.copy()
     if df.empty:
         return pd.DataFrame()
-    df = df.copy()
     if days <= 7:
         base = df[df["Quadrante"].isin(["ESCALA_ORCAMENTO", "COMPETITIVIDADE"])].copy()
         base["Dia"] = "Dia 1 a 7"
@@ -366,7 +393,7 @@ def count_unique_ad_ids(pat: pd.DataFrame) -> int:
 
 def compute_tacos_overall_from_org(camp_agg: pd.DataFrame, org: pd.DataFrame) -> dict:
     inv_ads = float(camp_agg["Investimento"].sum()) if camp_agg is not None and not camp_agg.empty else 0.0
-    c_vbr = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)"])
+    c_vbr = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)", "Vendas brutas (R$)"])
     fatur_total = float(_to_num(org[c_vbr]).fillna(0).sum()) if c_vbr else 0.0
     tacos = inv_ads / fatur_total if fatur_total > 0 else 0.0
     return {"Faturamento_total_estimado": fatur_total, "TACOS_conta": tacos}
@@ -376,7 +403,7 @@ def compute_tacos_by_product(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 
         return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
 
     c_org_id = _detect_ad_id_col(org)
-    c_org_fat = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)"])
+    c_org_fat = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)", "Vendas brutas (R$)"])
     if c_org_id is None or c_org_fat is None:
         return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
 
@@ -388,7 +415,7 @@ def compute_tacos_by_product(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 
     spend = pd.DataFrame({"ID": [], "Investimento_ads": []})
     if pat is not None and not pat.empty:
         c_pat_id = _detect_ad_id_col(pat)
-        c_pat_spend = _pick_col(pat.columns, ["Investimento", "Gasto", "Spend"])
+        c_pat_spend = _pick_col(pat.columns, ["Investimento", "Gasto", "Custo", "Spend", "Gasto (BRL)", "Investimento (BRL)"])
         if c_pat_id and c_pat_spend:
             p = pat.copy()
             p["ID"] = _clean_id_series(p[c_pat_id])
@@ -402,25 +429,24 @@ def compute_tacos_by_product(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 
     df["TACOS"] = df.apply(lambda r: (r["Investimento_ads"] / r["Faturamento_total"]) if r["Faturamento_total"] > 0 else 0, axis=1)
 
     cols = ["ID", "Origem", "Investimento_ads", "Faturamento_total", "TACOS"]
-
     best = df.sort_values(["TACOS", "Faturamento_total"], ascending=[True, False]).head(top_n)[cols]
     worst = df.sort_values(["TACOS", "Faturamento_total"], ascending=[False, False]).head(top_n)[cols]
     return {"best": best, "worst": worst}
 
 def compute_tacos_by_campaign(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 10) -> dict:
     if org is None or org.empty or pat is None or pat.empty:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": None}
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
 
     c_pat_campaign = _detect_campaign_col(pat)
     c_pat_id = _detect_ad_id_col(pat)
-    c_pat_spend = _pick_col(pat.columns, ["Investimento", "Gasto", "Spend"])
+    c_pat_spend = _pick_col(pat.columns, ["Investimento", "Gasto", "Custo", "Spend", "Gasto (BRL)", "Investimento (BRL)"])
     if c_pat_campaign is None or c_pat_id is None or c_pat_spend is None:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": None}
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
 
     c_org_id = _detect_ad_id_col(org)
-    c_org_fat = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)"])
+    c_org_fat = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)", "Vendas brutas (R$)"])
     if c_org_id is None or c_org_fat is None:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": c_pat_campaign}
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
 
     o = org.copy()
     o["ID"] = _clean_id_series(o[c_org_id])
@@ -447,7 +473,7 @@ def compute_tacos_by_campaign(org: pd.DataFrame, pat: pd.DataFrame, top_n: int =
     cols = ["Campanha", "Origem", "Investimento_ads", "Faturamento_total", "TACOS"]
     best = camp.sort_values(["TACOS", "Faturamento_total"], ascending=[True, False]).head(top_n)[cols]
     worst = camp.sort_values(["TACOS", "Faturamento_total"], ascending=[False, False]).head(top_n)[cols]
-    return {"best": best, "worst": worst, "campaign_col": c_pat_campaign}
+    return {"best": best, "worst": worst}
 
 # -----------------------------
 # export
