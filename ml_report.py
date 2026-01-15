@@ -1,494 +1,366 @@
 import pandas as pd
+import numpy as np
 from io import BytesIO
+import unicodedata
+import re
 
-EMOJI_GREEN = "\U0001F7E2"
-EMOJI_YELLOW = "\U0001F7E1"
-EMOJI_BLUE = "\U0001F535"
-EMOJI_RED = "\U0001F534"
+EMOJI_GREEN = "\U0001F7E2"   # 🟢
+EMOJI_YELLOW = "\U0001F7E1"  # 🟡
+EMOJI_BLUE = "\U0001F535"    # 🔵
+EMOJI_RED = "\U0001F534"     # 🔴
 
-def _read_any(file, header=0):
-    name = getattr(file, "name", "") or ""
-    if name.lower().endswith(".csv"):
-        return pd.read_csv(file, header=header)
-    return pd.read_excel(file, header=header)
 
-def _normalize(s: str) -> str:
+def _norm(s: str) -> str:
     if s is None:
         return ""
-    s = str(s).strip().lower()
-    s = s.replace("\n", " ").replace("\r", " ")
+    s = str(s)
+    s = s.replace("\n", " ").replace("\r", " ").strip()
     s = " ".join(s.split())
-    return s
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return s.lower()
 
-def _pick_col(cols, candidates):
-    cols = list(cols)
-    cols_n = { _normalize(c): c for c in cols }
 
-    # 1) match exato
-    for cand in candidates:
-        cn = _normalize(cand)
-        if cn in cols_n:
-            return cols_n[cn]
-
-    # 2) contem
-    for cand in candidates:
-        cn = _normalize(cand)
-        for k, orig in cols_n.items():
-            if cn in k:
-                return orig
-    return None
-
-def _to_num(series):
+def _to_number(series: pd.Series) -> pd.Series:
+    if series is None:
+        return series
     s = series.astype(str).str.strip()
-    s = s.str.replace("R$", "", regex=False)
-    s = s.str.replace("%", "", regex=False)
+    s = s.replace({"nan": np.nan, "None": np.nan})
+    s = s.str.replace("R$", "", regex=False).str.replace("%", "", regex=False)
+    s = s.str.replace("\u00a0", " ", regex=False)
+    s = s.str.replace(" ", "", regex=False)
+    # milhar pt-br
     s = s.str.replace(".", "", regex=False)
+    # decimal pt-br
     s = s.str.replace(",", ".", regex=False)
     return pd.to_numeric(s, errors="coerce")
 
-def _auto_header_df(file, must_have_any=None, max_rows=40):
-    """
-    Lê arquivo e tenta detectar a linha correta de cabeçalho.
-    Funciona melhor com relatórios do ML que vem com linhas extras antes do header.
-    """
-    # leitura bruta sem header
-    raw = _read_any(file, header=None)
 
-    if raw is None or raw.empty:
-        df = _read_any(file, header=0)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
+def _find_col(df: pd.DataFrame, keywords, avoid=None):
+    avoid = avoid or []
+    cols = list(df.columns)
+    norm_cols = [_norm(c) for c in cols]
+    for i, nc in enumerate(norm_cols):
+        if any(k in nc for k in keywords) and not any(a in nc for a in avoid):
+            return cols[i]
+    return None
 
-    if not must_have_any:
-        df = _read_any(file, header=0)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
 
-    must = [_normalize(x) for x in must_have_any]
+def _detect_header_row(xlsx_file, required_keywords, max_rows=30, sheet_name=None):
+    raw = pd.read_excel(xlsx_file, sheet_name=sheet_name, header=None, nrows=max_rows)
+    for r in range(len(raw)):
+        row_vals = [_norm(v) for v in raw.iloc[r].tolist()]
+        hit = 0
+        for kw in required_keywords:
+            if any(kw in v for v in row_vals):
+                hit += 1
+        if hit >= max(2, int(len(required_keywords) * 0.6)):
+            return r
+    return None
 
-    best_row = None
-    best_score = -1
 
-    preview = raw.head(max_rows).copy()
-
-    for i in range(len(preview)):
-        row = preview.iloc[i].tolist()
-        row_n = [_normalize(x) for x in row]
-
-        score = 0
-        for m in must:
-            if any(m in cell for cell in row_n):
-                score += 1
-
-        # regra: precisa bater pelo menos 2 termos para ser considerado header
-        if score > best_score and score >= 2:
-            best_score = score
-            best_row = i
-
-    if best_row is None:
-        # fallback: tenta o header padrão
-        df = _read_any(file, header=0)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
-
-    df = raw.copy()
-    df.columns = df.iloc[best_row].astype(str).tolist()
-    df = df.iloc[best_row + 1 :].reset_index(drop=True)
-    df.columns = [str(c).strip() for c in df.columns]
+def _coerce_campaign_numeric(df: pd.DataFrame) -> pd.DataFrame:
+    for c in df.columns:
+        nc = _norm(c)
+        if any(k in nc for k in [
+            "invest", "gasto", "custo", "receit", "venda", "orc", "acos", "roas",
+            "cvr", "impress", "clique", "perdid", "percent"
+        ]):
+            df[c] = _to_number(df[c])
     return df
 
-# -----------------------------
-# ID seguro
-# -----------------------------
-def _clean_id_series(s: pd.Series) -> pd.Series:
-    x = s.astype(str).str.strip()
-    x = x.str.replace(r"\.0$", "", regex=True)
-    x = x.str.replace(r"[^\d]", "", regex=True)
-    x = x.replace("", pd.NA)
-    return x
 
-def _detect_ad_id_col(df: pd.DataFrame):
-    for cand in ["ID do anúncio", "Id do anúncio", "ID do anuncio", "Id do anuncio", "ID", "id_anuncio"]:
-        if cand in df.columns:
-            return cand
-    # fallback por contem
-    c = _pick_col(df.columns, ["id do anuncio", "id do anúncio", "id"])
-    return c
-
-def _detect_campaign_col(df: pd.DataFrame):
-    for cand in ["Nome da campanha", "Campanha", "campaign_name", "Nome Campanha", "Nome da Campanha"]:
-        if cand in df.columns:
-            return cand
-    return _pick_col(df.columns, ["campanha", "nome da campanha"])
-
-# -----------------------------
-# loaders
-# -----------------------------
 def load_organico(organico_file) -> pd.DataFrame:
-    return _auto_header_df(
+    # Seu arquivo de publicacoes normalmente funciona com header=4
+    # mas se mudar, detectamos automaticamente
+    header_row = _detect_header_row(
         organico_file,
-        must_have_any=["id do anúncio", "vendas brutas", "visitas únicas", "unidades"],
+        required_keywords=["id", "anuncio", "vendas"],
+        max_rows=40,
+        sheet_name=None
     )
+    if header_row is None:
+        header_row = 4
 
-def load_patrocinados(patro_file) -> pd.DataFrame:
-    return _auto_header_df(
-        patro_file,
-        must_have_any=["id do anúncio", "investimento", "vendas brutas", "quantidade de vendas"],
-    )
+    org = pd.read_excel(organico_file, header=header_row)
+    org.columns = [str(c).strip() for c in org.columns]
 
-def load_campanhas_consolidado(camp_file) -> pd.DataFrame:
-    return _auto_header_df(
-        camp_file,
-        must_have_any=["campanha", "investimento", "receita", "vendas"],
-    )
-
-def load_campanhas_diario(camp_file) -> pd.DataFrame:
-    return _auto_header_df(
-        camp_file,
-        must_have_any=["campanha", "desde", "investimento", "receita"],
-    )
-
-# -----------------------------
-# build campaign agg
-# -----------------------------
-def build_campaign_agg(camp: pd.DataFrame, modo_key: str) -> pd.DataFrame:
-    df = camp.copy()
-    if df.empty:
-        return pd.DataFrame(columns=["Nome", "Investimento", "Receita", "Vendas", "Orçamento", "ACOS_Objetivo", "Perdidas_Orc", "Perdidas_Class"])
-
-    c_nome = _pick_col(df.columns, ["Nome da campanha", "Nome da Campanha", "Campanha", "Nome", "Campaign"])
-    c_inv = _pick_col(df.columns, ["Investimento", "Gasto", "Custo", "Spend", "Investimento (BRL)", "Gasto (BRL)"])
-    c_rec = _pick_col(df.columns, ["Receita", "Vendas (R$)", "Sales", "Receita/Vendas", "Receita (BRL)", "Vendas brutas (BRL)", "Vendas brutas"])
-    c_vend = _pick_col(df.columns, ["Vendas", "Quantidade de vendas", "Pedidos", "Total de vendas"])
-    c_orc = _pick_col(df.columns, ["Orçamento médio diário", "Orçamento", "Budget", "Orcamento", "Orçamento diário"])
-    c_acos_obj = _pick_col(df.columns, ["ACOS Objetivo", "ACOS alvo", "ACOS objetivo", "ACOS Alvo"])
-    c_porc_orc = _pick_col(df.columns, ["Perda por orçamento", "% perda por orçamento", "Perdidas por orçamento", "Perda orçamento"])
-    c_porc_rank = _pick_col(df.columns, ["Perda por classificação", "% perda por classificação", "Perda por rank", "Perdidas por classificação", "Perda classificação"])
-
-    if c_nome is None or c_inv is None or c_rec is None:
-        # erro claro e útil
-        cols = ", ".join([str(c) for c in df.columns[:30]])
-        raise ValueError(
-            "Campanhas: preciso de colunas de Nome da campanha, Investimento e Receita. "
-            "Colunas detectadas no seu arquivo: " + cols
-        )
-
-    df["Nome"] = df[c_nome].astype(str).str.strip()
-    df["Investimento"] = _to_num(df[c_inv]).fillna(0)
-    df["Receita"] = _to_num(df[c_rec]).fillna(0)
-
-    if c_vend:
-        df["Vendas"] = pd.to_numeric(df[c_vend], errors="coerce").fillna(0)
-    else:
-        df["Vendas"] = 0
-
-    if c_orc:
-        df["Orçamento"] = _to_num(df[c_orc]).fillna(0)
-    else:
-        df["Orçamento"] = 0
-
-    if c_acos_obj:
-        df["ACOS_Objetivo"] = _to_num(df[c_acos_obj]).fillna(0) / 100.0
-    else:
-        df["ACOS_Objetivo"] = 0
-
-    if c_porc_orc:
-        df["Perdidas_Orc"] = _to_num(df[c_porc_orc]).fillna(0) / 100.0
-    else:
-        df["Perdidas_Orc"] = 0
-
-    if c_porc_rank:
-        df["Perdidas_Class"] = _to_num(df[c_porc_rank]).fillna(0) / 100.0
-    else:
-        df["Perdidas_Class"] = 0
-
-    agg = df.groupby("Nome", as_index=False).agg(
-        Investimento=("Investimento", "sum"),
-        Receita=("Receita", "sum"),
-        Vendas=("Vendas", "sum"),
-        Orçamento=("Orçamento", "mean"),
-        ACOS_Objetivo=("ACOS_Objetivo", "mean"),
-        Perdidas_Orc=("Perdidas_Orc", "mean"),
-        Perdidas_Class=("Perdidas_Class", "mean"),
-    )
-
-    agg["ROAS_Real"] = agg.apply(lambda r: r["Receita"] / r["Investimento"] if r["Investimento"] > 0 else 0, axis=1)
-    agg["ACOS_Real"] = agg.apply(lambda r: r["Investimento"] / r["Receita"] if r["Receita"] > 0 else 0, axis=1)
-    return agg
-
-def build_daily_from_diario(camp: pd.DataFrame) -> pd.DataFrame:
-    df = camp.copy()
-    if df.empty:
-        return df
-
-    c_date = _pick_col(df.columns, ["Desde", "Data", "Dia"])
-    c_inv = _pick_col(df.columns, ["Investimento", "Gasto", "Custo", "Spend"])
-    c_rec = _pick_col(df.columns, ["Receita", "Vendas (R$)", "Sales", "Vendas brutas"])
-
-    if not (c_date and c_inv and c_rec):
-        return pd.DataFrame()
+    col_id = _find_col(org, ["id do anuncio", "id", "codigo do anuncio", "mlb"])
+    col_titulo = _find_col(org, ["anuncio", "titulo"])
+    col_vendas_brutas = _find_col(org, ["vendas brutas", "vendas_brutas", "vendas (brl)", "vendas"], avoid=["conversao", "particip"])
+    col_visitas = _find_col(org, ["visitas"])
+    col_qtd_vendas = _find_col(org, ["quantidade de vendas", "qtd", "vendas"], avoid=["bruta", "brl", "receita"])
+    col_compradores = _find_col(org, ["compradores"])
+    col_unidades = _find_col(org, ["unidades"])
 
     out = pd.DataFrame()
-    out["Desde"] = pd.to_datetime(df[c_date], errors="coerce")
-    out["Investimento"] = _to_num(df[c_inv]).fillna(0)
-    out["Receita"] = _to_num(df[c_rec]).fillna(0)
-    out = out.groupby("Desde", as_index=False)[["Investimento", "Receita"]].sum()
-    return out.sort_values("Desde")
+    out["ID"] = org[col_id].astype(str).str.replace("MLB", "", regex=False).str.strip() if col_id else org.iloc[:, 0].astype(str)
+    out["Titulo"] = org[col_titulo].astype(str) if col_titulo else ""
+    out["Visitas"] = _to_number(org[col_visitas]) if col_visitas else np.nan
+    out["Qtd_Vendas"] = _to_number(org[col_qtd_vendas]) if col_qtd_vendas else np.nan
+    out["Compradores"] = _to_number(org[col_compradores]) if col_compradores else np.nan
+    out["Unidades"] = _to_number(org[col_unidades]) if col_unidades else np.nan
+    out["Vendas_Brutas"] = _to_number(org[col_vendas_brutas]) if col_vendas_brutas else np.nan
 
-# -----------------------------
-# strategy tables
-# -----------------------------
-def _classify_quadrant(r):
-    roas = float(r.get("ROAS_Real", 0))
-    perd_orc = float(r.get("Perdidas_Orc", 0))
-    perd_rank = float(r.get("Perdidas_Class", 0))
-    acos_real = float(r.get("ACOS_Real", 0))
-    acos_obj = float(r.get("ACOS_Objetivo", 0))
-    receita = float(r.get("Receita", 0))
+    out = out[out["ID"].notna()]
+    out["ID"] = out["ID"].astype(str).str.replace("MLB", "", regex=False).str.strip()
 
-    if roas > 7 and perd_orc > 0.40:
-        return "ESCALA_ORCAMENTO"
-    if receita > 0 and perd_rank > 0.50:
-        return "COMPETITIVIDADE"
-    if (roas > 0 and roas < 3) or (acos_obj > 0 and acos_real > acos_obj * 1.30):
-        return "HEMORRAGIA"
-    return "ESTAVEL"
+    return out
 
-def _action_from_quadrant(q):
-    if q == "ESCALA_ORCAMENTO":
-        return f"{EMOJI_GREEN} Aumentar Orçamento"
-    if q == "COMPETITIVIDADE":
-        return f"{EMOJI_YELLOW} Subir ACOS Alvo"
-    if q == "HEMORRAGIA":
-        return f"{EMOJI_RED} Revisar/Pausar"
-    return f"{EMOJI_BLUE} Manter"
 
-def _cpi_flag(df):
-    if df.empty:
-        df["CPI80"] = False
-        return df
-    d = df.sort_values("Receita", ascending=False).copy()
-    total = d["Receita"].sum()
-    if total <= 0:
-        d["CPI80"] = False
-        return d
-    d["Share"] = d["Receita"] / total
-    d["CumShare"] = d["Share"].cumsum()
-    d["CPI80"] = d["CumShare"] <= 0.80
-    return d
+def load_patrocinados(patrocinados_file) -> pd.DataFrame:
+    sheet_try = [
+        "Relatório Anúncios patrocinados",
+        "Relatorio Anuncios patrocinados",
+        "Anúncios patrocinados",
+        "Anuncios patrocinados",
+        "Sheet1"
+    ]
 
-def build_tables(
-    org: pd.DataFrame,
-    camp_agg: pd.DataFrame,
-    pat: pd.DataFrame,
-    enter_visitas_min=50,
-    enter_conv_min=0.05,
-    pause_invest_min=100.0,
-    pause_cvr_max=0.01,
-):
-    df = camp_agg.copy()
-    if df.empty:
-        kpis = {"Investimento": 0, "Receita": 0, "Vendas": 0, "ROAS": 0}
-        empty = pd.DataFrame()
-        return kpis, empty, empty, empty, empty, empty
+    df = None
+    for sh in sheet_try:
+        try:
+            header_row = _detect_header_row(
+                patrocinados_file,
+                required_keywords=["anuncio", "invest", "receit"],
+                max_rows=40,
+                sheet_name=sh
+            )
+            if header_row is None:
+                header_row = 0
+            df = pd.read_excel(patrocinados_file, sheet_name=sh, header=header_row)
+            break
+        except Exception:
+            df = None
 
-    df = _cpi_flag(df)
-    df["Quadrante"] = df.apply(_classify_quadrant, axis=1)
-    df["Acao_Recomendada"] = df["Quadrante"].apply(_action_from_quadrant)
+    if df is None:
+        header_row = _detect_header_row(
+            patrocinados_file,
+            required_keywords=["anuncio", "invest", "receit"],
+            max_rows=40,
+            sheet_name=None
+        )
+        if header_row is None:
+            header_row = 0
+        df = pd.read_excel(patrocinados_file, header=header_row)
 
-    kpis = {
-        "Investimento": float(df["Investimento"].sum()),
-        "Receita": float(df["Receita"].sum()),
-        "Vendas": float(df["Vendas"].sum()),
-        "ROAS": float(df["Receita"].sum() / df["Investimento"].sum()) if df["Investimento"].sum() > 0 else 0.0,
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_id = _find_col(df, ["codigo do anuncio", "id do anuncio", "id", "mlb"], avoid=["campanha"])
+    if col_id is None:
+        col_id = df.columns[0]
+
+    df["ID"] = df[col_id].astype(str).str.replace("MLB", "", regex=False).str.strip()
+
+    col_inv = _find_col(df, ["invest", "gasto", "custo"])
+    col_rec = _find_col(df, ["receita", "vendas"], avoid=["quant"])
+    col_vendas = _find_col(df, ["vendas"], avoid=["receita", "bruta", "brl"])
+    col_imp = _find_col(df, ["impress"])
+    col_clk = _find_col(df, ["clique"])
+    col_camp = _find_col(df, ["campanha", "nome da campanha", "nome campanha"])
+
+    out = pd.DataFrame()
+    out["ID"] = df["ID"]
+    out["Campanha"] = df[col_camp].astype(str) if col_camp else ""
+    out["Impressões"] = _to_number(df[col_imp]) if col_imp else np.nan
+    out["Cliques"] = _to_number(df[col_clk]) if col_clk else np.nan
+    out["Receita"] = _to_number(df[col_rec]) if col_rec else np.nan
+    out["Investimento"] = _to_number(df[col_inv]) if col_inv else np.nan
+    out["Vendas"] = _to_number(df[col_vendas]) if col_vendas else np.nan
+
+    return out
+
+
+def load_campanhas_diario(camp_file) -> pd.DataFrame:
+    header_row = _detect_header_row(
+        camp_file,
+        required_keywords=["campanha", "invest", "receit"],
+        max_rows=50,
+        sheet_name=None
+    )
+    if header_row is None:
+        header_row = 0
+
+    camp = pd.read_excel(camp_file, header=header_row)
+    camp.columns = [str(c).strip() for c in camp.columns]
+    camp = _coerce_campaign_numeric(camp)
+    return camp
+
+
+def load_campanhas_consolidado(camp_file) -> pd.DataFrame:
+    sheet_try = ["Relatório de campanha", "Relatorio de campanha", "Campanhas", "Sheet1"]
+
+    df = None
+    for sh in sheet_try:
+        try:
+            header_row = _detect_header_row(
+                camp_file,
+                required_keywords=["campanha", "invest", "receit"],
+                max_rows=50,
+                sheet_name=sh
+            )
+            if header_row is None:
+                header_row = 0
+            df = pd.read_excel(camp_file, sheet_name=sh, header=header_row)
+            break
+        except Exception:
+            df = None
+
+    if df is None:
+        header_row = _detect_header_row(
+            camp_file,
+            required_keywords=["campanha", "invest", "receit"],
+            max_rows=50,
+            sheet_name=None
+        )
+        if header_row is None:
+            header_row = 0
+        df = pd.read_excel(camp_file, header=header_row)
+
+    df.columns = [str(c).strip() for c in df.columns]
+    df = _coerce_campaign_numeric(df)
+    return df
+
+
+def build_campaign_agg(camp: pd.DataFrame, modo_key: str = "auto") -> pd.DataFrame:
+    if camp is None or len(camp) == 0:
+        return pd.DataFrame(columns=[
+            "Nome","Status","Orçamento","ACOS Objetivo","Impressões","Cliques","Receita","Investimento","Vendas",
+            "ROAS","CVR","Perdidas_Orc","Perdidas_Class"
+        ])
+
+    df = camp.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_nome = _find_col(df, ["nome da campanha", "nome campanha", "campanha"], avoid=["id"])
+    col_status = _find_col(df, ["status"])
+    col_orc = _find_col(df, ["orcamento", "orçamento"])
+    col_acos_obj = _find_col(df, ["acos objetivo", "acos alvo", "acos"], avoid=["real"])
+    col_imp = _find_col(df, ["impress"])
+    col_clk = _find_col(df, ["clique"])
+    col_receita = _find_col(df, ["receita", "vendas"], avoid=["quant", "clique", "impress"])
+    col_invest = _find_col(df, ["invest", "gasto", "custo"])
+    col_vendas = _find_col(df, ["vendas"], avoid=["receita", "bruta", "brl"])
+    col_roas = _find_col(df, ["roas"])
+    col_cvr = _find_col(df, ["cvr", "conversion"])
+    col_perc_orc = _find_col(df, ["perdidas por orçamento", "perdidas por orcamento", "perdidas orc", "impressoes perdidas por orcamento"])
+    col_perc_rank = _find_col(df, ["perdidas por classificação", "perdidas por classificacao", "perdidas rank", "impressoes perdidas por classificacao"])
+
+    out = pd.DataFrame()
+    out["Nome"] = df[col_nome] if col_nome else pd.NA
+    out["Status"] = df[col_status] if col_status else pd.NA
+    out["Orçamento"] = _to_number(df[col_orc]) if col_orc else np.nan
+    out["ACOS Objetivo"] = _to_number(df[col_acos_obj]) if col_acos_obj else np.nan
+    out["Impressões"] = _to_number(df[col_imp]) if col_imp else np.nan
+    out["Cliques"] = _to_number(df[col_clk]) if col_clk else np.nan
+    out["Receita"] = _to_number(df[col_receita]) if col_receita else np.nan
+    out["Investimento"] = _to_number(df[col_invest]) if col_invest else np.nan
+    out["Vendas"] = _to_number(df[col_vendas]) if col_vendas else np.nan
+    out["ROAS"] = _to_number(df[col_roas]) if col_roas else np.nan
+    out["CVR"] = _to_number(df[col_cvr]) if col_cvr else np.nan
+    out["Perdidas_Orc"] = _to_number(df[col_perc_orc]) if col_perc_orc else np.nan
+    out["Perdidas_Class"] = _to_number(df[col_perc_rank]) if col_perc_rank else np.nan
+
+    if out["ROAS"].isna().all():
+        inv = out["Investimento"].fillna(0)
+        rec = out["Receita"].fillna(0)
+        out["ROAS"] = np.where(inv > 0, rec / inv, np.nan)
+
+    out = out[out["Nome"].notna()]
+    out = out[out["Nome"].astype(str).str.strip().ne("")]
+
+    return out
+
+
+def _safe_div(a, b):
+    a = float(a) if a is not None else 0.0
+    b = float(b) if b is not None else 0.0
+    if b == 0:
+        return 0.0
+    return a / b
+
+
+def build_kpis(camp_agg: pd.DataFrame, pat: pd.DataFrame, org: pd.DataFrame | None):
+    inv_ads = float(camp_agg["Investimento"].fillna(0).sum()) if camp_agg is not None and len(camp_agg) else 0.0
+    rec_ads = float(camp_agg["Receita"].fillna(0).sum()) if camp_agg is not None and len(camp_agg) else 0.0
+    vendas_ads = float(camp_agg["Vendas"].fillna(0).sum()) if camp_agg is not None and len(camp_agg) else 0.0
+
+    roas = _safe_div(rec_ads, inv_ads)
+    acos = _safe_div(inv_ads, rec_ads)
+
+    camp_unicas = int(camp_agg["Nome"].nunique()) if camp_agg is not None and "Nome" in camp_agg else 0
+    ids_patrocinados = int(pat["ID"].nunique()) if pat is not None and "ID" in pat else 0
+
+    faturamento_total = None
+    tacos = None
+    if org is not None and len(org) and "Vendas_Brutas" in org:
+        faturamento_total = float(org["Vendas_Brutas"].fillna(0).sum())
+        tacos = _safe_div(inv_ads, faturamento_total)
+
+    return {
+        "Investimento Ads (R$)": inv_ads,
+        "Receita Ads (R$)": rec_ads,
+        "Vendas Ads (qtd)": vendas_ads,
+        "ROAS": roas,
+        "ACOS": acos,
+        "Campanhas únicas": camp_unicas,
+        "IDs patrocinados": ids_patrocinados,
+        "Faturamento total estimado (R$)": faturamento_total,
+        "TACOS (conta)": tacos,
     }
 
-    pause = df[(df["Investimento"] >= pause_invest_min) & (df["ROAS_Real"] < 3)].copy()
-    pause = pause.sort_values("Investimento", ascending=False).head(30)
 
-    enter = pd.DataFrame()
-    if org is not None and not org.empty:
-        c_id = _pick_col(org.columns, ["ID do anúncio", "Id do anúncio", "ID"])
-        c_vis = _pick_col(org.columns, ["Visitas únicas", "Visitas"])
-        c_vendas = _pick_col(org.columns, ["Quantidade de vendas", "Vendas"])
-        if c_id and c_vis and c_vendas:
-            o = org.copy()
-            o["ID"] = _clean_id_series(o[c_id])
-            o["Visitas"] = pd.to_numeric(o[c_vis], errors="coerce").fillna(0)
-            o["Vendas"] = pd.to_numeric(o[c_vendas], errors="coerce").fillna(0)
-            o["CVR"] = o.apply(lambda r: r["Vendas"] / r["Visitas"] if r["Visitas"] > 0 else 0, axis=1)
-            enter = o[(o["Visitas"] >= enter_visitas_min) & (o["CVR"] >= enter_conv_min)].copy()
-            enter = enter.sort_values(["CVR", "Visitas"], ascending=False).head(30)
+def build_tacos_ranking(pat: pd.DataFrame, org: pd.DataFrame, top_n=10):
+    if pat is None or org is None or len(pat) == 0 or len(org) == 0:
+        return pd.DataFrame(), pd.DataFrame()
 
-    scale = df[df["Quadrante"] == "ESCALA_ORCAMENTO"].copy()
-    acos = df[df["Quadrante"] == "COMPETITIVIDADE"].copy()
-    camp_strat = df.copy()
-    return kpis, pause, enter, scale, acos, camp_strat
+    pat2 = pat.copy()
+    org2 = org.copy()
 
-def build_executive_diagnosis(camp_strat: pd.DataFrame, daily: pd.DataFrame = None) -> dict:
-    inv = float(camp_strat["Investimento"].sum()) if not camp_strat.empty else 0.0
-    rec = float(camp_strat["Receita"].sum()) if not camp_strat.empty else 0.0
-    roas = rec / inv if inv > 0 else 0.0
-    acos_real = inv / rec if rec > 0 else 0.0
+    pat2["ID"] = pat2["ID"].astype(str).str.strip()
+    org2["ID"] = org2["ID"].astype(str).str.strip()
 
-    if inv > 0 and roas >= 7:
-        ver = "Estamos deixando dinheiro na mesa."
-    elif inv > 0 and roas < 3:
-        ver = "Precisamos estancar sangria."
-    else:
-        ver = "Operacao estavel, priorize destravar gargalos."
-
-    return {"ROAS": roas, "ACOS_real": acos_real, "Veredito": ver, "Tendencias": {}}
-
-def build_opportunity_highlights(camp_strat: pd.DataFrame) -> dict:
-    if camp_strat.empty:
-        return {"Locomotivas": pd.DataFrame(), "Minas": pd.DataFrame()}
-    loc = camp_strat[(camp_strat["CPI80"] == True) & (camp_strat["Perdidas_Class"] > 0.50)].copy()
-    minas = camp_strat[(camp_strat["ROAS_Real"] > 7) & (camp_strat["Perdidas_Orc"] > 0.40)].copy()
-    loc = loc.sort_values("Receita", ascending=False).head(10)
-    minas = minas.sort_values("ROAS_Real", ascending=False).head(10)
-    return {"Locomotivas": loc, "Minas": minas}
-
-def build_control_panel(camp_strat: pd.DataFrame) -> pd.DataFrame:
-    if camp_strat.empty:
-        return pd.DataFrame()
-    cols = ["Nome", "Orçamento", "ACOS_Objetivo", "ROAS_Real", "Perdidas_Orc", "Perdidas_Class", "Acao_Recomendada"]
-    cols = [c for c in cols if c in camp_strat.columns]
-    out = camp_strat[cols].copy()
-    return out.sort_values("Receita", ascending=False)
-
-def build_plan(camp_strat: pd.DataFrame, days: int = 7) -> pd.DataFrame:
-    df = camp_strat.copy()
-    if df.empty:
-        return pd.DataFrame()
-    if days <= 7:
-        base = df[df["Quadrante"].isin(["ESCALA_ORCAMENTO", "COMPETITIVIDADE"])].copy()
-        base["Dia"] = "Dia 1 a 7"
-        base["Tarefa"] = base["Quadrante"].map({
-            "ESCALA_ORCAMENTO": "Aumentar orcamento (+20% a +40%)",
-            "COMPETITIVIDADE": "Subir ACOS objetivo e destravar rank",
-        }).fillna("Monitorar")
-        return base[["Dia", "Nome", "Tarefa", "Acao_Recomendada", "Investimento", "Receita", "ROAS_Real"]]
-    base = df.copy()
-    base["Dia"] = f"Dia 1 a {days}"
-    base["Tarefa"] = base["Quadrante"].map({
-        "ESCALA_ORCAMENTO": "Aumentar orcamento (+20% a +40%)",
-        "COMPETITIVIDADE": "Subir ACOS objetivo e destravar rank",
-        "HEMORRAGIA": "Cortar sangria, reduzir alvo ou pausar",
-        "ESTAVEL": "Manter e monitorar",
-    }).fillna("Monitorar")
-    return base[["Dia", "Nome", "Tarefa", "Acao_Recomendada", "Investimento", "Receita", "ROAS_Real"]]
-
-# -----------------------------
-# TACOS
-# -----------------------------
-def count_unique_ad_ids(pat: pd.DataFrame) -> int:
-    if pat is None or pat.empty:
-        return 0
-    c = _detect_ad_id_col(pat)
-    if c is None:
-        return 0
-    ids = _clean_id_series(pat[c])
-    return int(ids.dropna().nunique())
-
-def compute_tacos_overall_from_org(camp_agg: pd.DataFrame, org: pd.DataFrame) -> dict:
-    inv_ads = float(camp_agg["Investimento"].sum()) if camp_agg is not None and not camp_agg.empty else 0.0
-    c_vbr = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)", "Vendas brutas (R$)"])
-    fatur_total = float(_to_num(org[c_vbr]).fillna(0).sum()) if c_vbr else 0.0
-    tacos = inv_ads / fatur_total if fatur_total > 0 else 0.0
-    return {"Faturamento_total_estimado": fatur_total, "TACOS_conta": tacos}
-
-def compute_tacos_by_product(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 10) -> dict:
-    if org is None or org.empty:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
-
-    c_org_id = _detect_ad_id_col(org)
-    c_org_fat = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)", "Vendas brutas (R$)"])
-    if c_org_id is None or c_org_fat is None:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
-
-    o = org.copy()
-    o["ID"] = _clean_id_series(o[c_org_id])
-    o["Faturamento_total"] = _to_num(o[c_org_fat]).fillna(0)
-    o = o.dropna(subset=["ID"]).groupby("ID", as_index=False)["Faturamento_total"].sum()
-
-    spend = pd.DataFrame({"ID": [], "Investimento_ads": []})
-    if pat is not None and not pat.empty:
-        c_pat_id = _detect_ad_id_col(pat)
-        c_pat_spend = _pick_col(pat.columns, ["Investimento", "Gasto", "Custo", "Spend", "Gasto (BRL)", "Investimento (BRL)"])
-        if c_pat_id and c_pat_spend:
-            p = pat.copy()
-            p["ID"] = _clean_id_series(p[c_pat_id])
-            p["Investimento_ads"] = _to_num(p[c_pat_spend]).fillna(0)
-            spend = p.dropna(subset=["ID"]).groupby("ID", as_index=False)["Investimento_ads"].sum()
-
-    df = o.merge(spend, on="ID", how="left")
-    df["Investimento_ads"] = pd.to_numeric(df["Investimento_ads"], errors="coerce").fillna(0)
-
-    df["Origem"] = df["Investimento_ads"].apply(lambda x: "Orgânico puro" if float(x) == 0 else "Ads + Orgânico")
-    df["TACOS"] = df.apply(lambda r: (r["Investimento_ads"] / r["Faturamento_total"]) if r["Faturamento_total"] > 0 else 0, axis=1)
-
-    cols = ["ID", "Origem", "Investimento_ads", "Faturamento_total", "TACOS"]
-    best = df.sort_values(["TACOS", "Faturamento_total"], ascending=[True, False]).head(top_n)[cols]
-    worst = df.sort_values(["TACOS", "Faturamento_total"], ascending=[False, False]).head(top_n)[cols]
-    return {"best": best, "worst": worst}
-
-def compute_tacos_by_campaign(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 10) -> dict:
-    if org is None or org.empty or pat is None or pat.empty:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
-
-    c_pat_campaign = _detect_campaign_col(pat)
-    c_pat_id = _detect_ad_id_col(pat)
-    c_pat_spend = _pick_col(pat.columns, ["Investimento", "Gasto", "Custo", "Spend", "Gasto (BRL)", "Investimento (BRL)"])
-    if c_pat_campaign is None or c_pat_id is None or c_pat_spend is None:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
-
-    c_org_id = _detect_ad_id_col(org)
-    c_org_fat = _pick_col(org.columns, ["Vendas brutas (BRL)", "Vendas brutas", "Receita", "Vendas (R$)", "Vendas brutas (R$)"])
-    if c_org_id is None or c_org_fat is None:
-        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
-
-    o = org.copy()
-    o["ID"] = _clean_id_series(o[c_org_id])
-    o["Faturamento_total"] = _to_num(o[c_org_fat]).fillna(0)
-    o = o.dropna(subset=["ID"]).groupby("ID", as_index=False)["Faturamento_total"].sum()
-
-    p = pat.copy()
-    p["ID"] = _clean_id_series(p[c_pat_id])
-    p["Investimento_ads"] = _to_num(p[c_pat_spend]).fillna(0)
-    p["Campanha"] = p[c_pat_campaign].astype(str).str.strip()
-
-    p2 = p.dropna(subset=["ID"]).groupby(["Campanha", "ID"], as_index=False)["Investimento_ads"].sum()
-    merged = p2.merge(o, on="ID", how="left")
-    merged["Faturamento_total"] = pd.to_numeric(merged["Faturamento_total"], errors="coerce").fillna(0)
-
-    camp = merged.groupby("Campanha", as_index=False).agg(
-        Investimento_ads=("Investimento_ads", "sum"),
-        Faturamento_total=("Faturamento_total", "sum"),
+    inv_por_id = (
+        pat2.groupby("ID", as_index=False)["Investimento"]
+        .sum()
+        .rename(columns={"Investimento": "investimento_ads"})
     )
 
-    camp["Origem"] = camp["Investimento_ads"].apply(lambda x: "Orgânico puro" if float(x) == 0 else "Ads + Orgânico")
-    camp["TACOS"] = camp.apply(lambda r: (r["Investimento_ads"] / r["Faturamento_total"]) if r["Faturamento_total"] > 0 else 0, axis=1)
+    base = org2.merge(inv_por_id, on="ID", how="left")
+    base["investimento_ads"] = base["investimento_ads"].fillna(0)
+    base["faturamento_total"] = base["Vendas_Brutas"].fillna(0)
 
-    cols = ["Campanha", "Origem", "Investimento_ads", "Faturamento_total", "TACOS"]
-    best = camp.sort_values(["TACOS", "Faturamento_total"], ascending=[True, False]).head(top_n)[cols]
-    worst = camp.sort_values(["TACOS", "Faturamento_total"], ascending=[False, False]).head(top_n)[cols]
-    return {"best": best, "worst": worst}
+    base["TACOS"] = np.where(
+        base["faturamento_total"] > 0,
+        base["investimento_ads"] / base["faturamento_total"],
+        np.nan
+    )
 
-# -----------------------------
-# export
-# -----------------------------
-def gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=None) -> bytes:
-    out = BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        pd.DataFrame([kpis]).to_excel(writer, index=False, sheet_name="KPIS")
-        (camp_agg if camp_agg is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="CAMP_AGG")
-        (camp_strat if camp_strat is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="CAMP_STRAT")
-        (pause if pause is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="PAUSAR")
-        (enter if enter is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="ENTRAR")
-        (scale if scale is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="ESCALA")
-        (acos if acos is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="COMPETIR")
-        if daily is not None:
-            daily.to_excel(writer, index=False, sheet_name="DIARIO")
-    out.seek(0)
-    return out.read()
+    cols_show = ["ID", "Titulo", "investimento_ads", "faturamento_total", "TACOS"]
+    cols_show = [c for c in cols_show if c in base.columns]
+
+    best = base.sort_values(["TACOS", "faturamento_total"], ascending=[True, False]).head(top_n)[cols_show]
+    worst = base.sort_values(["TACOS", "faturamento_total"], ascending=[False, False]).head(top_n)[cols_show]
+
+    return best, worst
+
+
+def export_snapshot_excel(camp_agg: pd.DataFrame, pat: pd.DataFrame, org: pd.DataFrame | None, kpis: dict, periodo_label: str):
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        (camp_agg if camp_agg is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="campanhas")
+        (pat if pat is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="patrocinados")
+        (org if org is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="organico")
+        pd.DataFrame([{"periodo": periodo_label, **kpis}]).to_excel(writer, index=False, sheet_name="kpis")
+
+    bio.seek(0)
+    return bio.getvalue()
+
+
+def read_snapshot_excel(snapshot_file):
+    x = pd.read_excel(snapshot_file, sheet_name=None)
+    camp = x.get("campanhas", pd.DataFrame())
+    pat = x.get("patrocinados", pd.DataFrame())
+    org = x.get("organico", pd.DataFrame())
+    kpis = x.get("kpis", pd.DataFrame())
+    return camp, pat, org, kpis
