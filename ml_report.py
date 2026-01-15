@@ -699,3 +699,48 @@ def load_snapshot_excel(snapshot_file):
         camp_strat["Nome"] = camp_strat["Nome"].astype(str)
 
     return camp_agg, camp_strat, meta
+from io import BytesIO
+
+SNAPSHOT_SHEET_META = "META"
+SNAPSHOT_SHEET_CAMP_AGG = "CAMP_AGG"
+SNAPSHOT_SHEET_CAMP_STRAT = "CAMP_STRAT"
+
+def generate_snapshot_excel(
+    camp_agg: pd.DataFrame,
+    camp_strat: pd.DataFrame,
+    period_label: str = "",
+    start_date: str = "",
+    end_date: str = ""
+) -> bytes:
+    meta = pd.DataFrame([{
+        "period_label": period_label,
+        "start_date": start_date,
+        "end_date": end_date,
+        "generated_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+    }])
+
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        meta.to_excel(writer, index=False, sheet_name=SNAPSHOT_SHEET_META)
+        (camp_agg if camp_agg is not None else pd.DataFrame()).to_excel(
+            writer, index=False, sheet_name=SNAPSHOT_SHEET_CAMP_AGG
+        )
+        (camp_strat if camp_strat is not None else pd.DataFrame()).to_excel(
+            writer, index=False, sheet_name=SNAPSHOT_SHEET_CAMP_STRAT
+        )
+
+    out.seek(0)
+    return out.read()
+
+
+def load_snapshot_excel(snapshot_file):
+    meta = pd.read_excel(snapshot_file, sheet_name=SNAPSHOT_SHEET_META)
+    camp_agg = pd.read_excel(snapshot_file, sheet_name=SNAPSHOT_SHEET_CAMP_AGG)
+    camp_strat = pd.read_excel(snapshot_file, sheet_name=SNAPSHOT_SHEET_CAMP_STRAT)
+
+    if "Nome" in camp_agg.columns:
+        camp_agg["Nome"] = camp_agg["Nome"].astype(str)
+    if "Nome" in camp_strat.columns:
+        camp_strat["Nome"] = camp_strat["Nome"].astype(str)
+
+    return camp_agg, camp_strat, meta
