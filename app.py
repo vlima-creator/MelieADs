@@ -1,19 +1,40 @@
 import streamlit as st
+from datetime import datetime
+from io import BytesIO
 import pandas as pd
-import numpy as np
-
 import ml_report as ml
 
+st.set_page_config(page_title="ML Ads - Relatorio Estrategico", layout="wide")
+st.title("Mercado Livre Ads - Relatorio Estrategico")
 
-st.set_page_config(page_title="Mercado Livre Ads - Relatório Estratégico", layout="wide")
 
-st.title("Mercado Livre Ads, Relatório Estratégico")
-st.caption("Suba Campanhas + Anúncios patrocinados. Publicações (orgânico) é opcional e habilita TACOS.")
+# -----------------------------
+# Helpers
+# -----------------------------
+def safe_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Evita erro do pyarrow no st.dataframe quando há colunas com tipos mistos.
+    """
+    if df is None:
+        return pd.DataFrame()
+    out = df.copy()
+    for c in out.columns:
+        if out[c].dtype == "object":
+            out[c] = out[c].astype(str)
+    return out
+
+
+def _safe_div(a, b):
+    try:
+        b = float(b)
+        if b != 0:
+            return float(a) / b
+    except Exception:
+        return 0.0
+    return 0.0
 
 
 def _money(v):
-    if v is None or (isinstance(v, float) and np.isnan(v)):
-        return "R$ 0,00"
     try:
         return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
@@ -21,157 +42,432 @@ def _money(v):
 
 
 def _pct(v):
-    if v is None or (isinstance(v, float) and np.isnan(v)):
-        return "0,00%"
     try:
         return f"{float(v) * 100:.2f}%".replace(".", ",")
     except Exception:
         return "0,00%"
 
 
-def _float(v, default=0.0):
-    try:
-        if v is None:
-            return default
-        if isinstance(v, float) and np.isnan(v):
-            return default
-        return float(v)
-    except Exception:
+def kpi_get(kpis_obj, candidates, default=0.0):
+    """
+    Pega valor de KPI de forma tolerante.
+    candidates: lista de nomes possiveis para a mesma metrica.
+    Aceita kpis como dict, Series ou DataFrame (1 linha).
+    """
+    if kpis_obj is None:
         return default
 
+    if isinstance(kpis_obj, dict):
+        for c in candidates:
+            if c in kpis_obj:
+                return kpis_obj.get(c, default)
+        return default
 
-with st.sidebar:
-    st.subheader("Config")
-    periodo_label = st.text_input("Rótulo do período", value="Últimos 15 dias")
+    if isinstance(kpis_obj, pd.Series):
+        for c in candidates:
+            if c in kpis_obj.index:
+                return kpis_obj.get(c, default)
+        return default
 
-    modo = st.selectbox(
-        "Tipo de arquivo de Campanhas",
-        options=["auto", "consolidado", "diario"],
-        index=0,
-        help="Auto tenta detectar. Consolidado e Diário forçam o leitor."
-    )
+    if isinstance(kpis_obj, pd.DataFrame):
+        if len(kpis_obj) >= 1:
+            row = kpis_obj.iloc[0]
+            for c in candidates:
+                if c in kpis_obj.columns:
+                    return row.get(c, default)
+                if c in row.index:
+                    return row.get(c, default)
+        return default
 
-    top_n = st.slider("Top N (rankings)", min_value=5, max_value=30, value=10, step=1)
+    return default
+
+
+def snapshot_to_bytes(meta: dict, camp_agg: pd.DataFrame, camp_strat: pd.DataFrame) -> bytes:
+    """
+    Snapshot padrão do app para histórico comparativo.
+    """
+    out = BytesIO()
+    meta_df = pd.DataFrame([meta])
+
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        meta_df.to_excel(writer, index=False, sheet_name="META")
+        (camp_agg if camp_agg is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="CAMP_AGG")
+        (camp_strat if camp_strat is not None else pd.DataFrame()).to_excel(writer, index=False, sheet_name="CAMP_STRAT")
+
+    out.seek(0)
+    return out.read()
+
+
+def load_snapshot(snapshot_file):
+    meta = pd.read_excel(snapshot_file, sheet_name="META")
+    camp_agg_prev = pd.read_excel(snapshot_file, sheet_name="CAMP_AGG")
+    camp_strat_prev = pd.read_excel(snapshot_file, sheet_name="CAMP_STRAT")
+    return meta, camp_agg_prev, camp_strat_prev
+
+
+# -----------------------------
+# Inputs
+# -----------------------------
+modo = st.radio(
+    "Selecione o tipo de relatorio de campanhas que voce exportou:",
+    ["CONSOLIDADO (decisao)", "DIARIO (monitoramento)"],
+    horizontal=True
+)
+modo_key = "consolidado" if "CONSOLIDADO" in modo else "diario"
+
+with st.expander("Regras (ajustaveis)"):
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        enter_visitas_min = st.number_input("ENTRAR: Visitas min.", min_value=0, value=50, step=10)
+    with c2:
+        enter_conv_pct = st.number_input("ENTRAR: Conversao organica min. (%)", min_value=0.0, value=5.0, step=0.5)
+    with c3:
+        pause_invest_min = st.number_input("PAUSAR: Investimento min. (R$)", min_value=0.0, value=100.0, step=50.0)
+    with c4:
+        pause_cvr_pct = st.number_input("PAUSAR: CVR max. (%)", min_value=0.0, value=1.0, step=0.2)
 
 st.divider()
 
-camp_file = st.file_uploader("Relatório de Campanhas (Excel ou CSV)", type=["xlsx", "xls", "csv"], key="camp")
-pat_file = st.file_uploader("Relatório de Anúncios patrocinados (Excel ou CSV)", type=["xlsx", "xls", "csv"], key="pat")
-org_file = st.file_uploader("Relatório de Publicações, Orgânico (opcional)", type=["xlsx", "xls"], key="org")
+cA, cB, cC = st.columns(3)
+with cA:
+    period_label = st.text_input("Rotulo do periodo (opcional)", value="Periodo atual")
+with cB:
+    plano_dias = st.selectbox("Plano de acao (dias)", options=[7, 14, 15], index=0)
+with cC:
+    topn_rank = st.selectbox("Rankings (Top N)", options=[5, 10, 20], index=1)
 
 st.divider()
 
-if not camp_file or not pat_file:
-    st.info("Suba Campanhas e Anúncios patrocinados para gerar o relatório.")
+u1, u2, u3 = st.columns(3)
+with u1:
+    organico_file = st.file_uploader("Relatorio organico (publicacoes) (opcional, mas recomendado para TACOS)", type=["xlsx"])
+with u2:
+    campanhas_file = st.file_uploader("Relatorio campanhas Ads", type=["xlsx"])
+with u3:
+    patrocinados_file = st.file_uploader("Relatorio anuncios patrocinados", type=["xlsx"])
+
+st.subheader("Historico comparativo (opcional)")
+st.caption("Recomendado: use o snapshot padrao do app como periodo anterior.")
+snapshot_prev_file = st.file_uploader("Snapshot do periodo anterior (Excel do app)", type=["xlsx"])
+
+if not (campanhas_file and patrocinados_file):
+    st.info("Envie pelo menos Campanhas e Anuncios Patrocinados para liberar o dashboard.")
     st.stop()
 
-try:
-    if modo == "diario":
-        camp_raw = ml.load_campanhas_diario(camp_file)
-    elif modo == "consolidado":
-        camp_raw = ml.load_campanhas_consolidado(camp_file)
-    else:
-        # auto: tenta consolidado, se falhar cai para diario
+
+# -----------------------------
+# Load + Build
+# -----------------------------
+with st.spinner("Lendo arquivos..."):
+    org = pd.DataFrame()
+    if organico_file is not None:
+        org = ml.load_organico(organico_file)
+
+    pat = ml.load_patrocinados(patrocinados_file)
+    camp = ml.load_campanhas_diario(campanhas_file) if modo_key == "diario" else ml.load_campanhas_consolidado(campanhas_file)
+
+camp_agg = ml.build_campaign_agg(camp, modo_key)
+
+kpis, pause, enter, scale, acos, camp_strat = ml.build_tables(
+    org, camp_agg, pat,
+    enter_visitas_min=int(enter_visitas_min),
+    enter_conv_min=float(enter_conv_pct) / 100.0,
+    pause_invest_min=float(pause_invest_min),
+    pause_cvr_max=float(pause_cvr_pct) / 100.0,
+)
+
+daily = None
+if modo_key == "diario":
+    daily = ml.build_daily_from_diario(camp)
+
+diagnosis = ml.build_executive_diagnosis(camp_strat, daily=daily)
+panel = ml.build_control_panel(camp_strat)
+high = ml.build_opportunity_highlights(camp_strat)
+
+# plano dinamico
+if hasattr(ml, "build_plan"):
+    plan_df = ml.build_plan(camp_strat, days=int(plano_dias))
+else:
+    plan_df = ml.build_7_day_plan(camp_strat)
+
+
+# -----------------------------
+# TACOS
+# -----------------------------
+tacos_overall = None
+tacos_prod_best = pd.DataFrame()
+tacos_prod_worst = pd.DataFrame()
+tacos_camp_best = pd.DataFrame()
+tacos_camp_worst = pd.DataFrame()
+tacos_camp_col = None
+
+if organico_file is not None and not org.empty:
+    if hasattr(ml, "compute_tacos_overall_from_org"):
         try:
-            camp_raw = ml.load_campanhas_consolidado(camp_file)
+            tacos_overall = ml.compute_tacos_overall_from_org(camp_agg, org)
         except Exception:
-            camp_raw = ml.load_campanhas_diario(camp_file)
+            tacos_overall = None
 
-    pat = ml.load_patrocinados(pat_file)
+    if hasattr(ml, "compute_tacos_by_product"):
+        try:
+            res = ml.compute_tacos_by_product(org, pat, top_n=int(topn_rank))
+            tacos_prod_best = res.get("best", pd.DataFrame())
+            tacos_prod_worst = res.get("worst", pd.DataFrame())
+        except Exception:
+            pass
 
-    org = None
-    if org_file is not None:
-        org = ml.load_organico(org_file)
+    if hasattr(ml, "compute_tacos_by_campaign"):
+        try:
+            res = ml.compute_tacos_by_campaign(org, pat, top_n=int(topn_rank))
+            tacos_camp_best = res.get("best", pd.DataFrame())
+            tacos_camp_worst = res.get("worst", pd.DataFrame())
+            tacos_camp_col = res.get("campaign_col")
+        except Exception:
+            pass
 
-    camp_agg = ml.build_campaign_agg(camp_raw, modo_key=modo)
 
-except Exception as e:
-    st.error("Falha ao ler os arquivos. O ML pode ter mudado a estrutura.")
-    st.exception(e)
-    st.stop()
+# -----------------------------
+# Snapshot (download) + Comparative
+# -----------------------------
+snapshot_meta = {
+    "period_label": period_label,
+    "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "modo": modo_key,
+}
 
-kpis = ml.build_kpis(camp_agg, pat, org)
-
-st.subheader("KPIs")
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Investimento", _money(kpis.get("Investimento Ads (R$)", 0)))
-c2.metric("Receita Ads", _money(kpis.get("Receita Ads (R$)", 0)))
-c3.metric("Vendas Ads", f"{int(_float(kpis.get('Vendas Ads (qtd)', 0))):,}".replace(",", "."))
-c4.metric("ROAS", f"{_float(kpis.get('ROAS', 0)):.2f}")
-c5.metric("Campanhas únicas", str(kpis.get("Campanhas únicas", 0)))
-c6.metric("IDs patrocinados", str(kpis.get("IDs patrocinados", 0)))
-
-if kpis.get("Faturamento total estimado (R$)") is not None:
-    st.divider()
-    c7, c8, c9 = st.columns(3)
-    c7.metric("Faturamento total estimado", _money(kpis.get("Faturamento total estimado (R$)", 0)))
-    c8.metric("TACOS (conta)", _pct(kpis.get("TACOS (conta)", 0)))
-    c9.metric("ACOS (referência)", _pct(kpis.get("ACOS", 0)))
-    st.caption("TACOS usa faturamento total (orgânico + pago). ACOS usa apenas receita de Ads.")
-
-st.divider()
-
-st.subheader("Painel de Controle Geral, Campanhas (normalizado)")
-st.dataframe(camp_agg, use_container_width=True)
-
-st.divider()
-
-if org is not None and len(org) > 0:
-    st.subheader(f"Rankings TACOS (Top {top_n})")
-
-    best, worst = ml.build_tacos_ranking(pat, org, top_n=top_n)
-
-    if len(best) == 0:
-        st.warning("Não consegui montar o ranking TACOS. Confere se o orgânico tem ID e Vendas brutas.")
-    else:
-        st.markdown(f"### Top {top_n} melhores produtos por TACOS (menor TACOS)")
-        st.dataframe(best, use_container_width=True)
-
-        st.markdown(f"### Top {top_n} piores produtos por TACOS (maior TACOS)")
-        st.dataframe(worst, use_container_width=True)
-
-st.divider()
-
-st.subheader("Histórico comparativo (opcional)")
-st.caption("Baixe o snapshot do app e use ele como período anterior na próxima análise.")
-
-snapshot_bytes = ml.export_snapshot_excel(
-    camp_agg=camp_agg,
-    pat=pat,
-    org=org,
-    kpis=kpis,
-    periodo_label=periodo_label
-)
-
-st.download_button(
-    "Baixar snapshot padrão do app (Excel)",
-    data=snapshot_bytes,
-    file_name=f"snapshot_mlads_{periodo_label.replace(' ', '_').lower()}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
-snap_prev = st.file_uploader("Snapshot do período anterior (padrão do app)", type=["xlsx"], key="snap_prev")
-
-if snap_prev is not None:
+if hasattr(ml, "generate_snapshot_excel"):
     try:
-        prev_camp, prev_pat, prev_org, prev_kpis = ml.read_snapshot_excel(snap_prev)
+        snapshot_bytes = ml.generate_snapshot_excel(
+            camp_agg=camp_agg,
+            camp_strat=camp_strat,
+            period_label=period_label,
+            start_date="",
+            end_date="",
+        )
+    except Exception:
+        snapshot_bytes = snapshot_to_bytes(snapshot_meta, camp_agg, camp_strat)
+else:
+    snapshot_bytes = snapshot_to_bytes(snapshot_meta, camp_agg, camp_strat)
 
-        st.markdown("### Comparativo KPIs, atual vs anterior")
+prev_meta = None
+camp_agg_prev = None
+camp_strat_prev = None
+if snapshot_prev_file is not None:
+    try:
+        prev_meta, camp_agg_prev, camp_strat_prev = load_snapshot(snapshot_prev_file)
+    except Exception:
+        prev_meta, camp_agg_prev, camp_strat_prev = None, None, None
 
-        atual_inv = _float(kpis.get("Investimento Ads (R$)", 0))
-        atual_rec = _float(kpis.get("Receita Ads (R$)", 0))
-        atual_roas = _float(kpis.get("ROAS", 0))
 
-        prev_row = prev_kpis.iloc[0].to_dict() if isinstance(prev_kpis, pd.DataFrame) and len(prev_kpis) else {}
-        prev_inv = _float(prev_row.get("Investimento Ads (R$)", 0))
-        prev_rec = _float(prev_row.get("Receita Ads (R$)", 0))
-        prev_roas = _float(prev_row.get("ROAS", 0))
+# -----------------------------
+# UI
+# -----------------------------
+tab1, tab2 = st.tabs(["Dashboard", "Gerar Excel"])
 
-        cc1, cc2, cc3 = st.columns(3)
-        cc1.metric("Investimento", _money(atual_inv), delta=_money(atual_inv - prev_inv))
-        cc2.metric("Receita Ads", _money(atual_rec), delta=_money(atual_rec - prev_rec))
-        cc3.metric("ROAS", f"{atual_roas:.2f}", delta=f"{(atual_roas - prev_roas):.2f}")
+with tab1:
+    st.subheader("Diagnostico Executivo")
+    st.write(f"ROAS da conta: **{diagnosis['ROAS']:.2f}** | ACOS real: **{diagnosis['ACOS_real']:.2f}**")
+    st.write(f"Veredito: **{diagnosis['Veredito']}**")
 
-    except Exception as e:
-        st.error("Falha ao ler o snapshot anterior.")
-        st.exception(e)
+    t = diagnosis.get("Tendencias", {})
+    if t and (t.get("cpc_proxy_up") is not None):
+        st.caption(
+            f"Tendencias (ultimos 7d vs 7d anteriores) | "
+            f"CPC proxy: {t['cpc_proxy_up']:+.1%} | "
+            f"Ticket: {t['ticket_down']:+.1%} | "
+            f"ROAS: {t['roas_down']:+.1%}"
+        )
+
+    st.divider()
+    st.subheader("KPIs")
+
+    inv_ads = kpi_get(kpis, ["Investimento Ads (R$)", "Investimento Ads", "Investimento", "Gasto", "Spend"], 0.0)
+    rev_ads = kpi_get(kpis, ["Receita Ads (R$)", "Receita Ads", "Receita", "Vendas Ads (R$)", "Sales"], 0.0)
+    vendas_ads = kpi_get(kpis, ["Vendas Ads", "Vendas", "Quantidade de vendas"], 0)
+    roas = kpi_get(kpis, ["ROAS", "Roas"], 0.0)
+    camp_unicas = kpi_get(kpis, ["Campanhas únicas", "Campanhas unicas", "Campanhas"], 0)
+    ids_patro = kpi_get(kpis, ["IDs patrocinados únicos", "IDs patrocinados unicos", "IDs patrocinados"], 0)
+
+    a, b, c, d, e, f = st.columns(6)
+    a.metric("Investimento", _money(inv_ads))
+    b.metric("Receita Ads", _money(rev_ads))
+    c.metric("Vendas Ads", int(float(vendas_ads) if vendas_ads is not None else 0))
+    d.metric("ROAS", f"{float(roas):.2f}")
+    e.metric("Campanhas unicas", int(float(camp_unicas) if camp_unicas is not None else 0))
+    f.metric("IDs patrocinados", int(float(ids_patro) if ids_patro is not None else 0))
+
+    if organico_file is None:
+        st.info("Para TACOS (conta, produto e campanha), envie o relatorio organico (publicacoes).")
+    else:
+        if tacos_overall is not None:
+            st.divider()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Faturamento total estimado", _money(tacos_overall.get("Faturamento_total_estimado")))
+            c2.metric("TACOS (conta)", _pct(tacos_overall.get("TACOS_conta")))
+            acos_ref = _safe_div(inv_ads, rev_ads)
+            c3.metric("ACOS (referencia)", _pct(acos_ref))
+            st.caption("TACOS usa faturamento total (organico + pago). ACOS usa apenas receita de Ads.")
+
+    st.divider()
+
+    if modo_key == "diario" and daily is not None and not daily.empty:
+        st.subheader("Evolucao diaria")
+        daily2 = daily.copy()
+        if "Desde" in daily2.columns:
+            daily2 = daily2.set_index("Desde")
+        cols = [c for c in ["Investimento", "Receita", "Vendas"] if c in daily2.columns]
+        if cols:
+            st.line_chart(daily2[cols])
+
+        st.divider()
+
+    st.subheader("Top 10 campanhas por Receita")
+    bar = camp_agg.copy()
+    for col in ["Receita", "Investimento", "Vendas", "ROAS", "CVR"]:
+        if col in bar.columns:
+            bar[col] = pd.to_numeric(bar[col], errors="coerce")
+    if "Receita" in bar.columns and "Nome" in bar.columns:
+        bar = bar.sort_values("Receita", ascending=False).head(10).set_index("Nome")
+        st.bar_chart(bar[["Receita"]])
+
+    st.divider()
+
+    st.subheader("Matriz de Oportunidade (Destaques)")
+    cX, cY = st.columns(2)
+    with cX:
+        st.write("Locomotivas (CPI 80% + perda por classificacao)")
+        st.dataframe(safe_for_streamlit(high.get("Locomotivas", pd.DataFrame())), use_container_width=True)
+    with cY:
+        st.write("Minas Limitadas (ROAS alto + perda por orcamento)")
+        st.dataframe(safe_for_streamlit(high.get("Minas", pd.DataFrame())), use_container_width=True)
+
+    st.divider()
+
+    st.subheader(f"Plano de Acao - {plano_dias} dias")
+    st.dataframe(safe_for_streamlit(plan_df), use_container_width=True)
+
+    st.divider()
+
+    st.subheader("Painel de Controle Geral")
+    st.dataframe(safe_for_streamlit(panel), use_container_width=True)
+
+    st.divider()
+
+    cM, cN = st.columns(2)
+    with cM:
+        st.subheader("Campanhas para PAUSAR/REVISAR")
+        st.dataframe(safe_for_streamlit(pause), use_container_width=True)
+    with cN:
+        st.subheader("Anuncios para ENTRAR em Ads (organico forte)")
+        st.dataframe(safe_for_streamlit(enter), use_container_width=True)
+
+    if organico_file is not None and (
+        (tacos_prod_best is not None and not tacos_prod_best.empty) or
+        (tacos_prod_worst is not None and not tacos_prod_worst.empty) or
+        (tacos_camp_best is not None and not tacos_camp_best.empty) or
+        (tacos_camp_worst is not None and not tacos_camp_worst.empty)
+    ):
+        st.divider()
+        st.subheader("TACOS por produto e por campanha")
+
+        if tacos_prod_best is not None and not tacos_prod_best.empty:
+            st.write(f"Top {topn_rank} melhores produtos por TACOS (menor TACOS)")
+            st.dataframe(safe_for_streamlit(tacos_prod_best), use_container_width=True)
+
+        if tacos_prod_worst is not None and not tacos_prod_worst.empty:
+            st.write(f"Top {topn_rank} piores produtos por TACOS (maior TACOS)")
+            st.dataframe(safe_for_streamlit(tacos_prod_worst), use_container_width=True)
+
+        if tacos_camp_col is None:
+            st.info("TACOS por campanha depende de uma coluna de campanha no relatorio de patrocinados.")
+        else:
+            if tacos_camp_best is not None and not tacos_camp_best.empty:
+                st.write(f"Top {topn_rank} melhores campanhas por TACOS")
+                st.dataframe(safe_for_streamlit(tacos_camp_best), use_container_width=True)
+
+            if tacos_camp_worst is not None and not tacos_camp_worst.empty:
+                st.write(f"Top {topn_rank} piores campanhas por TACOS")
+                st.dataframe(safe_for_streamlit(tacos_camp_worst), use_container_width=True)
+
+    st.divider()
+    st.subheader("Snapshot padrao e comparativo")
+
+    st.download_button(
+        "Baixar snapshot do periodo (padrao do app)",
+        data=snapshot_bytes,
+        file_name=f"snapshot_{datetime.now().strftime('%Y-%m-%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.caption("Use esse arquivo como periodo anterior na proxima analise para o comparativo sair consistente.")
+
+    if camp_strat_prev is not None and isinstance(camp_strat_prev, pd.DataFrame) and not camp_strat_prev.empty:
+        st.divider()
+        st.subheader("Comparativo vs periodo anterior")
+
+        try:
+            invest_now = float(inv_ads)
+            rec_now = float(rev_ads)
+            roas_now = float(roas)
+            acos_now = _safe_div(invest_now, rec_now)
+
+            invest_prev = float(pd.to_numeric(camp_agg_prev.get("Investimento", 0), errors="coerce").fillna(0).sum())
+            rec_prev = float(pd.to_numeric(camp_agg_prev.get("Receita", 0), errors="coerce").fillna(0).sum())
+            roas_prev = _safe_div(rec_prev, invest_prev)
+            acos_prev = _safe_div(invest_prev, rec_prev)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Investimento", _money(invest_now), delta=_money(invest_now - invest_prev))
+            c2.metric("Receita Ads", _money(rec_now), delta=_money(rec_now - rec_prev))
+            c3.metric("ROAS", f"{roas_now:.2f}", delta=f"{(roas_now - roas_prev):+.2f}")
+            c4.metric("ACOS", _pct(acos_now), delta=f"{(acos_now - acos_prev) * 100:+.2f}%".replace(".", ","))
+        except Exception:
+            st.warning("Nao consegui montar o comparativo de KPIs (verifique o snapshot).")
+
+        if isinstance(camp_strat, pd.DataFrame) and "Nome" in camp_strat.columns and "Nome" in camp_strat_prev.columns:
+            now_cols = [c for c in ["Nome", "Receita", "Investimento", "ROAS_Real", "Quadrante", "Acao_Recomendada"] if c in camp_strat.columns]
+            prev_cols = [c for c in ["Nome", "Receita", "Investimento", "ROAS_Real"] if c in camp_strat_prev.columns]
+
+            now = camp_strat[now_cols].copy()
+            prev = camp_strat_prev[prev_cols].copy()
+
+            for c in ["Receita", "Investimento", "ROAS_Real"]:
+                if c in now.columns:
+                    now[c] = pd.to_numeric(now[c], errors="coerce").fillna(0)
+                if c in prev.columns:
+                    prev[c] = pd.to_numeric(prev[c], errors="coerce").fillna(0)
+
+            m = now.merge(prev, on="Nome", how="left", suffixes=("_now", "_prev")).fillna(0)
+            if "Receita_now" in m.columns and "Receita_prev" in m.columns:
+                m["Delta_Receita"] = m["Receita_now"] - m["Receita_prev"]
+            if "ROAS_Real_now" in m.columns and "ROAS_Real_prev" in m.columns:
+                m["Delta_ROAS"] = m["ROAS_Real_now"] - m["ROAS_Real_prev"]
+
+            st.subheader("Campanhas que mais mudaram")
+            if "Delta_Receita" in m.columns:
+                top_up = m.sort_values("Delta_Receita", ascending=False).head(10)
+                top_down = m.sort_values("Delta_Receita", ascending=True).head(10)
+
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.write("Top 10 maior alta de receita")
+                    st.dataframe(safe_for_streamlit(top_up), use_container_width=True)
+                with c2:
+                    st.write("Top 10 maior queda de receita")
+                    st.dataframe(safe_for_streamlit(top_down), use_container_width=True)
+
+with tab2:
+    st.subheader("Gerar relatorio final (Excel)")
+    st.caption("Exporta tabelas do periodo atual. Snapshot é separado e serve para historico.")
+
+    if st.button("Gerar e baixar Excel"):
+        with st.spinner("Gerando Excel..."):
+            bytes_xlsx = ml.gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=daily)
+
+        nome = f"Relatorio_ML_ADs_Estrategico_{datetime.now().strftime('%Y-%m-%d_%H%M')}.xlsx"
+        st.download_button(
+            "Baixar Excel",
+            data=bytes_xlsx,
+            file_name=nome,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        st.success("OK")
