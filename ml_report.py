@@ -744,3 +744,147 @@ def load_snapshot_excel(snapshot_file):
         camp_strat["Nome"] = camp_strat["Nome"].astype(str)
 
     return camp_agg, camp_strat, meta
+def compute_total_revenue_from_organico(org: pd.DataFrame) -> float:
+    """
+    Tenta estimar o faturamento total (orgânico + pago) do período usando o relatório orgânico.
+    Para evitar duplicidade por variações, usa max(Vendas_Brutas) por ID e soma.
+    """
+    if org is None or org.empty:
+        return float("nan")
+
+    col = None
+    for c in ["Vendas_Brutas", "Vendas brutas (BRL)", "Vendas brutas", "Vendas"]:
+        if c in org.columns:
+            col = c
+            break
+
+    if col is None:
+        return float("nan")
+
+    tmp = org.copy()
+    if "ID" not in tmp.columns:
+        return float("nan")
+
+    tmp[col] = pd.to_numeric(tmp[col], errors="coerce").fillna(0)
+    total = tmp.groupby("ID", as_index=False)[col].max()[col].sum()
+    return float(total)
+
+
+def compute_tacos_overall_from_org(camp_agg: pd.DataFrame, org: pd.DataFrame) -> dict:
+    """
+    TACOS conta = Investimento Ads / Faturamento Total (orgânico + pago)
+    """
+    invest = pd.to_numeric(camp_agg.get("Investimento", 0), errors="coerce").fillna(0).sum()
+    total_rev = compute_total_revenue_from_organico(org)
+
+    tacos = float("nan")
+    if total_rev and not pd.isna(total_rev) and total_rev > 0:
+        tacos = float(invest) / float(total_rev)
+
+    return {
+        "Faturamento_total_estimado": total_rev,
+        "TACOS_conta": tacos
+    }
+
+
+def compute_tacos_by_product(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 10) -> dict:
+    """
+    TACOS por produto (ID) = Investimento Ads do ID / Vendas_Brutas totais do ID
+    Retorna top melhores e piores por TACOS.
+    """
+    if org is None or org.empty or pat is None or pat.empty:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
+
+    if "ID" not in org.columns or "ID" not in pat.columns:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
+
+    inv_col = "Investimento\n(Moeda local)"
+    if inv_col not in pat.columns:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
+
+    vendas_col = None
+    for c in ["Vendas_Brutas", "Vendas brutas (BRL)", "Vendas brutas", "Vendas"]:
+        if c in org.columns:
+            vendas_col = c
+            break
+    if vendas_col is None:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame()}
+
+    org2 = org.copy()
+    org2[vendas_col] = pd.to_numeric(org2[vendas_col], errors="coerce").fillna(0)
+    org_prod = org2.groupby("ID", as_index=False)[vendas_col].max().rename(columns={vendas_col: "Faturamento_total"})
+
+    pat2 = pat.copy()
+    pat2["ID"] = pat2["ID"].astype(str)
+    pat2[inv_col] = pd.to_numeric(pat2[inv_col], errors="coerce").fillna(0)
+    pat_prod = pat2.groupby("ID", as_index=False)[inv_col].sum().rename(columns={inv_col: "Investimento_ads"})
+
+    m = pat_prod.merge(org_prod, on="ID", how="left")
+    m["Faturamento_total"] = pd.to_numeric(m["Faturamento_total"], errors="coerce").fillna(0)
+    m["Investimento_ads"] = pd.to_numeric(m["Investimento_ads"], errors="coerce").fillna(0)
+
+    m["TACOS"] = m.apply(lambda r: _safe_div(r["Investimento_ads"], r["Faturamento_total"]), axis=1)
+
+    base = m[m["Faturamento_total"] > 0].copy()
+    best = base.sort_values(["TACOS", "Investimento_ads"], ascending=[True, False]).head(top_n)
+    worst = base.sort_values(["TACOS", "Investimento_ads"], ascending=[False, False]).head(top_n)
+
+    return {"best": best, "worst": worst}
+
+
+def compute_tacos_by_campaign(org: pd.DataFrame, pat: pd.DataFrame, top_n: int = 10) -> dict:
+    """
+    TACOS por campanha depende de ter nome de campanha no relatório de patrocinados.
+    Se existir, faz:
+    TACOS campanha = Investimento Ads da campanha / Faturamento total dos IDs que rodaram nessa campanha
+    """
+    if org is None or org.empty or pat is None or pat.empty:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": None}
+
+    if "ID" not in org.columns or "ID" not in pat.columns:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": None}
+
+    inv_col = "Investimento\n(Moeda local)"
+    if inv_col not in pat.columns:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": None}
+
+    camp_col = None
+    for c in pat.columns:
+        if "campanh" in str(c).lower():
+            camp_col = c
+            break
+    if camp_col is None:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": None}
+
+    vendas_col = None
+    for c in ["Vendas_Brutas", "Vendas brutas (BRL)", "Vendas brutas", "Vendas"]:
+        if c in org.columns:
+            vendas_col = c
+            break
+    if vendas_col is None:
+        return {"best": pd.DataFrame(), "worst": pd.DataFrame(), "campaign_col": camp_col}
+
+    org2 = org.copy()
+    org2[vendas_col] = pd.to_numeric(org2[vendas_col], errors="coerce").fillna(0)
+    org_prod = org2.groupby("ID", as_index=False)[vendas_col].max().rename(columns={vendas_col: "Faturamento_total"})
+
+    pat2 = pat.copy()
+    pat2["ID"] = pat2["ID"].astype(str)
+    pat2[inv_col] = pd.to_numeric(pat2[inv_col], errors="coerce").fillna(0)
+
+    pat2 = pat2.merge(org_prod, on="ID", how="left")
+    pat2["Faturamento_total"] = pd.to_numeric(pat2["Faturamento_total"], errors="coerce").fillna(0)
+
+    grp = pat2.groupby(camp_col, as_index=False).agg(
+        Investimento_ads=("Investimento\n(Moeda local)", "sum"),
+        Faturamento_total=("Faturamento_total", "sum"),
+        Itens=("ID", "nunique"),
+    )
+
+    grp["TACOS"] = grp.apply(lambda r: _safe_div(r["Investimento_ads"], r["Faturamento_total"]), axis=1)
+
+    base = grp[grp["Faturamento_total"] > 0].copy()
+    best = base.sort_values(["TACOS", "Investimento_ads"], ascending=[True, False]).head(top_n)
+    worst = base.sort_values(["TACOS", "Investimento_ads"], ascending=[False, False]).head(top_n)
+
+    return {"best": best, "worst": worst, "campaign_col": camp_col}
