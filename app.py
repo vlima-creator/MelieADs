@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 from datetime import datetime
 from io import BytesIO
@@ -116,6 +115,7 @@ with st.spinner("Lendo arquivos..."):
         org = ml.load_organico(organico_file)
 
     pat = ml.load_patrocinados(patrocinados_file)
+
     if modo_key == "diario":
         camp = ml.load_campanhas_diario(campanhas_file)
     else:
@@ -154,7 +154,6 @@ tacos_prod_best = pd.DataFrame()
 tacos_prod_worst = pd.DataFrame()
 tacos_camp_best = pd.DataFrame()
 tacos_camp_worst = pd.DataFrame()
-tacos_camp_col = None
 
 if organico_file is not None and org is not None and not org.empty:
     tacos_overall = ml.compute_tacos_overall_from_org(camp_agg, org)
@@ -166,7 +165,6 @@ if organico_file is not None and org is not None and not org.empty:
     res_camp = ml.compute_tacos_by_campaign(org, pat, top_n=int(topn_rank))
     tacos_camp_best = res_camp.get("best", pd.DataFrame())
     tacos_camp_worst = res_camp.get("worst", pd.DataFrame())
-    tacos_camp_col = res_camp.get("campaign_col")
 
 snapshot_meta = {
     "period_label": period_label,
@@ -175,12 +173,11 @@ snapshot_meta = {
 }
 snapshot_bytes = snapshot_to_bytes(snapshot_meta, camp_agg, camp_strat)
 
-camp_agg_prev = None
 if snapshot_prev_file is not None:
     try:
-        _, camp_agg_prev, _ = load_snapshot(snapshot_prev_file)
+        _, _, _ = load_snapshot(snapshot_prev_file)
     except Exception:
-        camp_agg_prev = None
+        pass
 
 tab1, tab2 = st.tabs(["Dashboard", "Gerar Excel"])
 
@@ -245,6 +242,13 @@ with tab1:
 
         st.write(f"Top {topn_rank} piores produtos por TACOS (maior TACOS)")
         st.dataframe(safe_for_streamlit(tacos_prod_worst), use_container_width=True)
+
+        st.divider()
+        st.subheader("Rankings TACOS por campanha (Top N)")
+        st.write(f"Top {topn_rank} melhores campanhas por TACOS")
+        st.dataframe(safe_for_streamlit(tacos_camp_best), use_container_width=True)
+        st.write(f"Top {topn_rank} piores campanhas por TACOS")
+        st.dataframe(safe_for_streamlit(tacos_camp_worst), use_container_width=True)
 
     st.divider()
     st.subheader("Snapshot")
