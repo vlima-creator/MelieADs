@@ -2,12 +2,6 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 import unicodedata
-import re
-
-EMOJI_GREEN = "\U0001F7E2"   # 🟢
-EMOJI_YELLOW = "\U0001F7E1"  # 🟡
-EMOJI_BLUE = "\U0001F535"    # 🔵
-EMOJI_RED = "\U0001F534"     # 🔴
 
 
 def _norm(s: str) -> str:
@@ -29,9 +23,7 @@ def _to_number(series: pd.Series) -> pd.Series:
     s = s.str.replace("R$", "", regex=False).str.replace("%", "", regex=False)
     s = s.str.replace("\u00a0", " ", regex=False)
     s = s.str.replace(" ", "", regex=False)
-    # milhar pt-br
     s = s.str.replace(".", "", regex=False)
-    # decimal pt-br
     s = s.str.replace(",", ".", regex=False)
     return pd.to_numeric(s, errors="coerce")
 
@@ -46,8 +38,25 @@ def _find_col(df: pd.DataFrame, keywords, avoid=None):
     return None
 
 
+def _read_excel_first_sheet(xlsx_file, header=None, nrows=None, sheet_name=None):
+    """
+    Garantia: nunca devolve dict.
+    Se sheet_name=None, lê somente a primeira aba.
+    Se por algum motivo voltar dict, pega a primeira aba.
+    """
+    sh = 0 if sheet_name is None else sheet_name
+    obj = pd.read_excel(xlsx_file, sheet_name=sh, header=header, nrows=nrows)
+
+    if isinstance(obj, dict):
+        # pega a primeira aba do dict
+        first_key = next(iter(obj.keys()))
+        return obj[first_key]
+    return obj
+
+
 def _detect_header_row(xlsx_file, required_keywords, max_rows=30, sheet_name=None):
-    raw = pd.read_excel(xlsx_file, sheet_name=sheet_name, header=None, nrows=max_rows)
+    raw = _read_excel_first_sheet(xlsx_file, header=None, nrows=max_rows, sheet_name=sheet_name)
+
     for r in range(len(raw)):
         row_vals = [_norm(v) for v in raw.iloc[r].tolist()]
         hit = 0
@@ -71,8 +80,6 @@ def _coerce_campaign_numeric(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_organico(organico_file) -> pd.DataFrame:
-    # Seu arquivo de publicacoes normalmente funciona com header=4
-    # mas se mudar, detectamos automaticamente
     header_row = _detect_header_row(
         organico_file,
         required_keywords=["id", "anuncio", "vendas"],
@@ -82,14 +89,14 @@ def load_organico(organico_file) -> pd.DataFrame:
     if header_row is None:
         header_row = 4
 
-    org = pd.read_excel(organico_file, header=header_row)
+    org = _read_excel_first_sheet(organico_file, header=header_row, sheet_name=None)
     org.columns = [str(c).strip() for c in org.columns]
 
     col_id = _find_col(org, ["id do anuncio", "id", "codigo do anuncio", "mlb"])
     col_titulo = _find_col(org, ["anuncio", "titulo"])
-    col_vendas_brutas = _find_col(org, ["vendas brutas", "vendas_brutas", "vendas (brl)", "vendas"], avoid=["conversao", "particip"])
+    col_vendas_brutas = _find_col(org, ["vendas brutas", "vendas (brl)", "vendas"], avoid=["conversao", "particip"])
     col_visitas = _find_col(org, ["visitas"])
-    col_qtd_vendas = _find_col(org, ["quantidade de vendas", "qtd", "vendas"], avoid=["bruta", "brl", "receita"])
+    col_qtd_vendas = _find_col(org, ["quantidade de vendas", "qtd"], avoid=["bruta", "brl"])
     col_compradores = _find_col(org, ["compradores"])
     col_unidades = _find_col(org, ["unidades"])
 
@@ -104,7 +111,6 @@ def load_organico(organico_file) -> pd.DataFrame:
 
     out = out[out["ID"].notna()]
     out["ID"] = out["ID"].astype(str).str.replace("MLB", "", regex=False).str.strip()
-
     return out
 
 
@@ -128,7 +134,7 @@ def load_patrocinados(patrocinados_file) -> pd.DataFrame:
             )
             if header_row is None:
                 header_row = 0
-            df = pd.read_excel(patrocinados_file, sheet_name=sh, header=header_row)
+            df = _read_excel_first_sheet(patrocinados_file, header=header_row, sheet_name=sh)
             break
         except Exception:
             df = None
@@ -142,7 +148,7 @@ def load_patrocinados(patrocinados_file) -> pd.DataFrame:
         )
         if header_row is None:
             header_row = 0
-        df = pd.read_excel(patrocinados_file, header=header_row)
+        df = _read_excel_first_sheet(patrocinados_file, header=header_row, sheet_name=None)
 
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -181,7 +187,7 @@ def load_campanhas_diario(camp_file) -> pd.DataFrame:
     if header_row is None:
         header_row = 0
 
-    camp = pd.read_excel(camp_file, header=header_row)
+    camp = _read_excel_first_sheet(camp_file, header=header_row, sheet_name=None)
     camp.columns = [str(c).strip() for c in camp.columns]
     camp = _coerce_campaign_numeric(camp)
     return camp
@@ -201,7 +207,7 @@ def load_campanhas_consolidado(camp_file) -> pd.DataFrame:
             )
             if header_row is None:
                 header_row = 0
-            df = pd.read_excel(camp_file, sheet_name=sh, header=header_row)
+            df = _read_excel_first_sheet(camp_file, header=header_row, sheet_name=sh)
             break
         except Exception:
             df = None
@@ -215,7 +221,7 @@ def load_campanhas_consolidado(camp_file) -> pd.DataFrame:
         )
         if header_row is None:
             header_row = 0
-        df = pd.read_excel(camp_file, header=header_row)
+        df = _read_excel_first_sheet(camp_file, header=header_row, sheet_name=None)
 
     df.columns = [str(c).strip() for c in df.columns]
     df = _coerce_campaign_numeric(df)
@@ -268,7 +274,6 @@ def build_campaign_agg(camp: pd.DataFrame, modo_key: str = "auto") -> pd.DataFra
 
     out = out[out["Nome"].notna()]
     out = out[out["Nome"].astype(str).str.strip().ne("")]
-
     return out
 
 
