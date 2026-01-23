@@ -750,8 +750,8 @@ def main():
         st.divider()
         st.subheader("Regras por anúncio (Ads)")
 
-        with st.expander("Ajustar regras de anúncio", expanded=False):
-            st.caption("Impressões, cliques e investimento são filtros de volume. CTR e CVR são referências médias de e-commerce, ajuste conforme seu nicho.")
+        st.subheader("Ajustar regras de anúncio")
+        st.caption("Impressões, cliques e investimento são filtros de volume. CTR e CVR são referências médias de e-commerce, ajuste conforme seu nicho.")
             ads_min_imp = st.number_input("Ads: impressões mín", min_value=0, value=500, step=100)
             ads_min_clk = st.number_input("Ads: cliques mín", min_value=0, value=10, step=5)
             ads_ctr_min_abs = st.number_input("Ads: CTR mín (%)  , referência 0,60%", min_value=0.0, value=0.60, step=0.05, format="%.2f")
@@ -978,7 +978,7 @@ def main():
     # -------------------------
     # Painel geral
     # -------------------------
-    with st.expander("Painel Geral de Campanhas", expanded=True):
+    st.subheader("Painel Geral de Campanhas")
         panel_raw = ml.build_control_panel(camp_strat)
         panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
         panel_view = prepare_df_for_view(panel_raw, drop_cpi_cols=True, drop_roas_generic=False)
@@ -989,7 +989,7 @@ def main():
     # -------------------------
     # Matriz CPI
     # -------------------------
-    with st.expander("Matriz CPI (Oportunidades de Otimização)", expanded=False):
+    st.subheader("Matriz CPI (Oportunidades de Otimização)")
         cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
         # Visao limpa (sem alterar calculos): esconder colunas auxiliares, remover duplicidades e alinhar ROAS/ACOS
         cpi_view = prepare_df_for_view(cpi_raw, drop_cpi_cols=True, drop_roas_generic=True)
@@ -1000,7 +1000,7 @@ def main():
     # -------------------------
     # Nível de anúncio (Patrocinados)
     # -------------------------
-    with st.expander("Análise Tática por Anúncio (Ads)", expanded=False):
+    st.subheader("Análise Tática por Anúncio (Ads)")
         if ads_panel is None or (hasattr(ads_panel, "empty") and ads_panel.empty):
             st.info("Sem dados de anúncios patrocinados para analisar.")
         else:
@@ -1028,20 +1028,20 @@ def main():
 
             with tab_pausar:
                 st.subheader("Anúncios para pausar (refino de campanha)")
-                ads_pausar_view = prepare_df_for_view(ads_pausar, drop_cpi_cols=True, drop_roas_generic=False) if ads_pausar is not None else pd.DataFrame()
-                st.dataframe(format_table_br(ads_pausar_view), use_container_width=True)
+            ads_pausar_view = prepare_df_for_view(ads_pausar, drop_cpi_cols=True, drop_roas_generic=False) if ads_pausar is not None else pd.DataFrame()
+            st.dataframe(format_table_br(ads_pausar_view), use_container_width=True)
 
             with tab_vencedores:
                 st.subheader("Anúncios vencedores (preservar)")
-                ads_vencedores_view = prepare_df_for_view(ads_vencedores, drop_cpi_cols=True, drop_roas_generic=False) if ads_vencedores is not None else pd.DataFrame()
-                st.dataframe(format_table_br(ads_vencedores_view), use_container_width=True)
+            ads_vencedores_view = prepare_df_for_view(ads_vencedores, drop_cpi_cols=True, drop_roas_generic=False) if ads_vencedores is not None else pd.DataFrame()
+            st.dataframe(format_table_br(ads_vencedores_view), use_container_width=True)
 
             with tab_otim:
                 st.subheader("Anúncios para otimização")
-                t1, t2, t3 = st.tabs(["Fotos e Clips", "Palavras-chave", "Oferta"])
-                with t1:
-                    v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
-                    st.dataframe(format_table_br(v), use_container_width=True)
+            t1, t2, t3 = st.tabs(["Fotos e Clips", "Palavras-chave", "Oferta"])
+            with t1:
+                v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
+                st.dataframe(format_table_br(v), use_container_width=True)
                 with t2:
                     v = prepare_df_for_view(ads_otim_keywords, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_keywords is not None else pd.DataFrame()
                     st.dataframe(format_table_br(v), use_container_width=True)
@@ -1051,8 +1051,8 @@ def main():
 
             with tab_completo:
                 st.subheader("Painel completo por anúncio")
-                ads_view = prepare_df_for_view(ads_panel, drop_cpi_cols=True, drop_roas_generic=False)
-                st.dataframe(format_table_br(ads_view), use_container_width=True)
+            ads_view = prepare_df_for_view(ads_panel, drop_cpi_cols=True, drop_roas_generic=False)
+            st.dataframe(format_table_br(ads_view), use_container_width=True)
 
     # -------------------------
     # Plano de Ação 15 Dias
@@ -1120,10 +1120,10 @@ def main():
     # Visão de Estoque (opcional)
     # -------------------------
     if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
-        with st.expander("Visão de Estoque", expanded=False):
-            if not blocked_stock.empty:
+        st.subheader("Visão de Estoque")
+        if not blocked_stock.empty:
                 st.subheader("Bloqueados por estoque (iriam para Ads, mas não têm quantidade mínima)")
-                st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
+            st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
             else:
                 st.write("Nenhum item foi bloqueado por estoque nas regras atuais.")
 
@@ -1133,8 +1133,8 @@ def main():
                 risco = risco[risco["Estoque_Status"].isin(["ZERADO", "CRITICO", "BAIXO"])].copy()
             if not risco.empty:
                 st.subheader("Risco de ruptura nas ações")
-                risco_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(risco), drop_cpi_cols=True, drop_roas_generic=False)
-                st.dataframe(format_table_br(risco_view), use_container_width=True)
+            risco_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(risco), drop_cpi_cols=True, drop_roas_generic=False)
+            st.dataframe(format_table_br(risco_view), use_container_width=True)
             else:
                 st.write("Sem alertas de estoque nas ações atuais.")
 
@@ -1221,34 +1221,34 @@ def main():
         
         with tab_ev_camp:
             st.subheader("Migração de Quadrantes")
-            migracao_counts = camp_strat_disp["Migracao_Quadrante"].value_counts().reset_index()
-            migracao_counts.columns = ["Migração", "Contagem"]
-            st.dataframe(migracao_counts, use_container_width=True)
+        migracao_counts = camp_strat_disp["Migracao_Quadrante"].value_counts().reset_index()
+        migracao_counts.columns = ["Migração", "Contagem"]
+        st.dataframe(migracao_counts, use_container_width=True)
 
             st.subheader("Tabela Comparativa de Campanhas")
-            cols_to_show = [
-                "Nome", "Quadrante", "Migracao_Quadrante", "Acao_Recomendada", 
-                "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
-                "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Recomendada_Snap"
-            ]
-            camp_comp_view = prepare_df_for_view(camp_strat_disp[[c for c in cols_to_show if c in camp_strat_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
-            st.dataframe(format_table_br(camp_comp_view), use_container_width=True)
+        cols_to_show = [
+            "Nome", "Quadrante", "Migracao_Quadrante", "Acao_Recomendada", 
+            "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
+            "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Recomendada_Snap"
+        ]
+        camp_comp_view = prepare_df_for_view(camp_strat_disp[[c for c in cols_to_show if c in camp_strat_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
+        st.dataframe(format_table_br(camp_comp_view), use_container_width=True)
 
         with tab_ev_ads:
             if anuncio_snap is not None and not anuncio_snap.empty:
                 st.subheader("Migração de Status de Anúncios")
-                migracao_counts_ads = ads_panel_disp["Migracao_Status"].value_counts().reset_index()
-                migracao_counts_ads.columns = ["Migração", "Contagem"]
-                st.dataframe(migracao_counts_ads, use_container_width=True)
+            migracao_counts_ads = ads_panel_disp["Migracao_Status"].value_counts().reset_index()
+            migracao_counts_ads.columns = ["Migração", "Contagem"]
+            st.dataframe(migracao_counts_ads, use_container_width=True)
 
                 st.subheader("Tabela Comparativa de Anúncios (MLB)")
-                cols_to_show_ads = [
-                    "ID", "Titulo", "Campanha", "Status_Anuncio", "Migracao_Status", 
-                    "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
-                    "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Anuncio", "Acao_Anuncio_Snap"
-                ]
-                ads_comp_view = prepare_df_for_view(ads_panel_disp[[c for c in cols_to_show_ads if c in ads_panel_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
-                st.dataframe(format_table_br(ads_comp_view), use_container_width=True)
+            cols_to_show_ads = [
+                "ID", "Titulo", "Campanha", "Status_Anuncio", "Migracao_Status", 
+                "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
+                "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Anuncio", "Acao_Anuncio_Snap"
+            ]
+            ads_comp_view = prepare_df_for_view(ads_panel_disp[[c for c in cols_to_show_ads if c in ads_panel_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
+            st.dataframe(format_table_br(ads_comp_view), use_container_width=True)
             else:
                 st.info("O snapshot carregado não contém dados detalhados de anúncios para comparação.")
 
