@@ -811,9 +811,12 @@ def main():
         st.divider()
         executar = st.button("Gerar relatório", use_container_width=True)
         
-        # Checkbox para decidir se quer baixar o snapshot automaticamente
-        st.divider()
-        baixar_snapshot_auto = st.checkbox("Baixar Snapshot V2 automaticamente", value=True)
+        # Checkbox para decidir se quer baixar o snapshot automaticamente (apenas Mercado Livre)
+        if selected_marketplace == "mercado_livre":
+            st.divider()
+            baixar_snapshot_auto = st.checkbox("Baixar Snapshot V2 automaticamente", value=True)
+        else:
+            baixar_snapshot_auto = False
 
     # Validação de arquivos obrigatórios baseada no marketplace
     if selected_marketplace == "mercado_livre":
@@ -882,11 +885,24 @@ def main():
             ads_panel_comp = df_shopee_conversoes
             camp_snap = None
             anuncio_snap = None
+            
+            # Variáveis do Mercado Livre que não existem na Shopee
+            pause = pd.DataFrame()
+            enter = pd.DataFrame()
+            scale = pd.DataFrame()
+            acos = pd.DataFrame()
+            camp_strat = df_shopee_protecao
+            ads_panel = df_shopee_conversoes
+            ads_pausar = pd.DataFrame()
+            ads_vencedores = pd.DataFrame()
+            ads_otim_fotos = pd.DataFrame()
+            ads_otim_keywords = pd.DataFrame()
+            ads_otim_oferta = pd.DataFrame()
 
         # -------------------------
-        # Snapshot V2 - Salvamento Automático
+        # Snapshot V2 - Salvamento Automático (Mercado Livre)
         # -------------------------
-        if baixar_snapshot_auto:
+        if selected_marketplace == "mercado_livre" and baixar_snapshot_auto:
             try:
                 # Gera um nome de arquivo único
                 filename = f"snapshot_ml_ads_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -913,28 +929,38 @@ def main():
 
 
         # -------------------------
-        # Estoque (opcional) - ajuste apenas para exibicao
+        # Estoque (opcional) - ajuste apenas para exibicao (Mercado Livre)
         # -------------------------
-        blocked_stock = pd.DataFrame()
-        pause_disp, enter_disp, scale_disp, acos_disp = pause, enter, scale, acos
-        camp_strat_disp = camp_strat_comp.copy()
-        ads_panel_disp = ads_panel_comp.copy()
-        if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
-            try:
-                stock_df = load_stock_file(estoque_file)
-                pause_disp = enrich_with_stock(pause_disp, stock_df)
-                enter_disp = enrich_with_stock(enter_disp, stock_df)
-                scale_disp = enrich_with_stock(scale_disp, stock_df)
-                acos_disp  = enrich_with_stock(acos_disp, stock_df)
-                enter_disp, scale_disp, acos_disp, pause_disp, blocked_stock = apply_stock_rules(
-                    enter_disp, scale_disp, acos_disp, pause_disp,
-                    estoque_min_ads=int(estoque_min_ads),
-                    estoque_baixo=int(estoque_baixo),
-                    estoque_critico=int(estoque_critico),
-                    tratar_estoque_vazio_como_zero=bool(tratar_estoque_vazio_como_zero),
-                )
-            except Exception as e:
-                st.warning(f"Não consegui aplicar a visão de estoque: {e}")
+        if selected_marketplace == "mercado_livre":
+            blocked_stock = pd.DataFrame()
+            pause_disp, enter_disp, scale_disp, acos_disp = pause, enter, scale, acos
+            camp_strat_disp = camp_strat_comp.copy()
+            ads_panel_disp = ads_panel_comp.copy()
+            if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
+                try:
+                    stock_df = load_stock_file(estoque_file)
+                    pause_disp = enrich_with_stock(pause_disp, stock_df)
+                    enter_disp = enrich_with_stock(enter_disp, stock_df)
+                    scale_disp = enrich_with_stock(scale_disp, stock_df)
+                    acos_disp  = enrich_with_stock(acos_disp, stock_df)
+                    enter_disp, scale_disp, acos_disp, pause_disp, blocked_stock = apply_stock_rules(
+                        enter_disp, scale_disp, acos_disp, pause_disp,
+                        estoque_min_ads=int(estoque_min_ads),
+                        estoque_baixo=int(estoque_baixo),
+                        estoque_critico=int(estoque_critico),
+                        tratar_estoque_vazio_como_zero=bool(tratar_estoque_vazio_como_zero),
+                    )
+                except Exception as e:
+                    st.warning(f"Não consegui aplicar a visão de estoque: {e}")
+        else:
+            # Shopee não tem estoque - criar variáveis vazias
+            blocked_stock = pd.DataFrame()
+            pause_disp = pd.DataFrame()
+            enter_disp = pd.DataFrame()
+            scale_disp = pd.DataFrame()
+            acos_disp = pd.DataFrame()
+            camp_strat_disp = camp_strat_comp.copy() if camp_strat_comp is not None else pd.DataFrame()
+            ads_panel_disp = ads_panel_comp.copy() if ads_panel_comp is not None else pd.DataFrame()
 
     except Exception as e:
         st.error("Erro ao processar os arquivos.")
