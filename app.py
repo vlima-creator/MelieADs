@@ -688,7 +688,7 @@ def main():
     except FileNotFoundError:
         st.warning("Arquivo de estilo não encontrado. O dashboard será exibido com o tema padrão.")
 
-    st.title("📊 Mercado Livre Ads - Dashboard e Relatório")
+    st.title("Mercado Livre Ads - Dashboard e Relatório")
 
     with st.sidebar:
         st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -928,13 +928,13 @@ def main():
     tacos_val = float(kpis.get("TACOS", 0))
     tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
 
-    cols[0].metric("💰 Investimento Ads", fmt_money_br(invest_ads))
-    cols[1].metric("📈 Receita Ads", fmt_money_br(receita_ads))
+    cols[0].metric("Investimento Ads", fmt_money_br(invest_ads))
+    cols[1].metric("Receita Ads", fmt_money_br(receita_ads))
     
     # ROAS com cor dinâmica
     roas_label = "Bom" if roas_val >= 5 else "Abaixo da meta"
     cols[2].metric(
-        "🎯 ROAS", 
+        "ROAS", 
         fmt_number_br(roas_val, 2), 
         delta=roas_label, 
         delta_color="normal" if roas_val >= 5 else "inverse"
@@ -954,14 +954,14 @@ def main():
         tacos_label = "Muito Alto"
         tacos_color = "inverse"
     
-    cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
+    cols[3].metric("TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
 
     st.divider()
 
     # -------------------------
     # Funil de Conversão
     # -------------------------
-    st.header("🎯 Funil de Conversão")
+    st.header("Funil de Conversão")
     if camp_strat is not None and not camp_strat.empty:
         # Extrair métricas do funil
         impressoes = camp_strat["Impressões"].sum() if "Impressões" in camp_strat.columns else 0
@@ -1049,7 +1049,7 @@ def main():
     # -------------------------
     # Nível de anúncio (Patrocinados)
     # -------------------------
-    with st.expander("🎯 Análise Tática por Anúncio (Ads)", expanded=False):
+    with st.expander("Análise Tática por Anúncio (Ads)", expanded=False):
         if ads_panel is None or (hasattr(ads_panel, "empty") and ads_panel.empty):
             st.info("Sem dados de anúncios patrocinados para analisar.")
         else:
@@ -1063,16 +1063,16 @@ def main():
 
             c1, c2, c3, c4, c5, c6 = st.columns(6)
             c1.metric("Total Anúncios", total_ads)
-            c2.metric("🏆 Vencedores", n_vencedores)
-            c3.metric("🛑 Pausar", n_pausar)
-            c4.metric("📸 Fotos/Clips", n_fotos)
-            c5.metric("⌨️ Keywords", n_kw)
-            c6.metric("🏷️ Oferta", n_oferta)
+            c2.metric("Vencedores", n_vencedores)
+            c3.metric("Pausar", n_pausar)
+            c4.metric("Fotos/Clips", n_fotos)
+            c5.metric("Keywords", n_kw)
+            c6.metric("Oferta", n_oferta)
 
             st.divider()
 
             tab_pausar, tab_vencedores, tab_otim, tab_completo = st.tabs([
-                "🛑 Pausar", "🏆 Vencedores", "🔧 Otimização", "📊 Painel Completo"
+                "Pausar", "Vencedores", "Otimização", "Painel Completo"
             ])
 
             with tab_pausar:
@@ -1087,7 +1087,7 @@ def main():
 
             with tab_otim:
                 st.subheader("Anúncios para otimização")
-                t1, t2, t3 = st.tabs(["📸 Fotos e Clips", "⌨️ Palavras-chave", "🏷️ Oferta"])
+                t1, t2, t3 = st.tabs(["Fotos e Clips", "Palavras-chave", "Oferta"])
                 with t1:
                     v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
                     st.dataframe(format_table_br(v), use_container_width=True)
@@ -1106,7 +1106,7 @@ def main():
     # -------------------------
     # Plano de Ação 15 Dias
     # -------------------------
-    st.header("📅 Plano de Ação Estratégico (15 Dias)")
+    st.header("Plano de Ação Estratégico (15 Dias)")
     st.info("Este plano respeita a janela de 7 dias do algoritmo do Mercado Livre. Não faça alterações nas mesmas campanhas em intervalos menores que uma semana.")
     
     plan15 = ml.build_15_day_plan(camp_strat)
@@ -1139,29 +1139,29 @@ def main():
     acos_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(acos_disp), drop_cpi_cols=True, drop_roas_generic=False)
     acos_fmt = format_table_br(acos_view)
 
-    st.header("🎯 Ações Recomendadas por Categoria")
+    st.header("Ações Recomendadas por Categoria")
     
     tab_pausar, tab_entrar, tab_escalar, tab_roas = st.tabs([
-        "🛑 Pausar/Revisar", "✅ Entrar em Ads", "🚀 Escalar Orçamento", "⬇️ Baixar ROAS Objetivo"
+        "Pausar/Revisar", "Entrar em Ads", "Escalar Orçamento", "Baixar ROAS Objetivo"
     ])
 
     with tab_pausar:
-        st.subheader("🛑 Campanhas para pausar ou revisar")
+        st.subheader("Campanhas para pausar ou revisar")
         st.info("Campanhas com ROAS baixo ou investimento sem retorno.")
         st.dataframe(pause_fmt, use_container_width=True)
     
     with tab_entrar:
-        st.subheader("✅ Oportunidades para entrar em Ads")
+        st.subheader("Oportunidades para entrar em Ads")
         st.info("Anúncios orgânicos com alta conversão que ainda não estão em Ads.")
         st.dataframe(enter_fmt, use_container_width=True)
 
     with tab_escalar:
-        st.subheader("🚀 Campanhas para escalar orçamento")
+        st.subheader("Campanhas para escalar orçamento")
         st.info("Campanhas com ROAS forte que estão perdendo impressões por orçamento.")
         st.dataframe(scale_fmt, use_container_width=True)
 
     with tab_roas:
-        st.subheader("⬇️ Campanhas para baixar ROAS objetivo")
+        st.subheader("Campanhas para baixar ROAS objetivo")
         st.info("Campanhas competitivas que podem ganhar mais mercado reduzindo o ROAS alvo.")
         st.dataframe(acos_fmt, use_container_width=True)
 
@@ -1169,7 +1169,7 @@ def main():
     # Visão de Estoque (opcional)
     # -------------------------
     if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
-        with st.expander("📦 Visão de Estoque", expanded=False):
+        with st.expander("Visão de Estoque", expanded=False):
             if not blocked_stock.empty:
                 st.subheader("Bloqueados por estoque (iriam para Ads, mas não têm quantidade mínima)")
                 st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
@@ -1257,16 +1257,16 @@ def main():
             return f"{val:+.2f}x"
 
         c_cols = st.columns(4)
-        c_cols[0].metric("💰 Investimento", fmt_money_br(invest_ads), delta=fmt_delta_money(delta_invest), delta_color="inverse")
-        c_cols[1].metric("📈 Receita", fmt_money_br(receita_ads), delta=fmt_delta_money(delta_receita))
-        c_cols[2].metric("🎯 ROAS", f"{roas_val:.2f}x", delta=fmt_delta_roas(delta_roas))
+        c_cols[0].metric("Investimento", fmt_money_br(invest_ads), delta=fmt_delta_money(delta_invest))
+        c_cols[1].metric("Receita", fmt_money_br(receita_ads), delta=fmt_delta_money(delta_receita))
+        c_cols[2].metric("ROAS", f"{roas_val:.2f}x", delta=fmt_delta_roas(delta_roas))
         
         # Tacos Delta (se disponível)
-        c_cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta="Atual")
+        c_cols[3].metric("TACOS", fmt_percent_br(tacos_pct), delta="Atual")
 
         st.divider()
         
-        tab_ev_camp, tab_ev_ads = st.tabs(["📊 Evolução de Campanhas", "🎯 Evolução de Anúncios (MLB)"])
+        tab_ev_camp, tab_ev_ads = st.tabs(["Evolução de Campanhas", "Evolução de Anúncios (MLB)"])
         
         with tab_ev_camp:
             st.subheader("Migração de Quadrantes")
