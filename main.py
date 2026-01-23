@@ -821,7 +821,7 @@ def main():
                 # Como alternativa de "auto-download", exibimos ele com destaque no topo.
                 st.sidebar.success(f"Snapshot V2 preparado!")
                 st.sidebar.download_button(
-                    label="📥 CLIQUE AQUI PARA BAIXAR SNAPSHOT",
+                    label=" CLIQUE AQUI PARA BAIXAR SNAPSHOT",
                     data=open(snapshot_path, "rb").read(),
                     file_name=filename,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -865,56 +865,7 @@ def main():
 
     # -------------------------
     # Sumário Executivo
-    # -------------------------
-    st.header("Sumário Executivo")
-    
-    # Geração do texto do sumário
-    def generate_executive_summary(kpis, camp_strat_comp, ads_panel_comp):
-        invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
-        receita_ads = float(kpis.get("Receita Ads (R$)", 0))
-        roas_val = float(kpis.get("ROAS", 0))
-        tacos_pct = float(kpis.get("TACOS", 0)) * 100
-        
-        # Análise de Quadrantes
-        q_counts = camp_strat_comp["Quadrante"].value_counts()
-        q_hemorragia = q_counts.get("HEMORRAGIA", 0)
-        q_escala = q_counts.get("ESCALA", 0)
-        
-        # Análise de Migração (Protegida contra colunas ausentes)
-        migracao_text = ""
-        if "Migracao_Quadrante" in camp_strat_comp.columns:
-            migracao_melhora = camp_strat_comp[camp_strat_comp["Migracao_Quadrante"].str.contains("HEMORRAGIA PARA ESTÁVEL|HEMORRAGIA PARA ESCALA|ESTÁVEL PARA ESCALA", na=False)].shape[0]
-            migracao_piora = camp_strat_comp[camp_strat_comp["Migracao_Quadrante"].str.contains("ESTÁVEL PARA HEMORRAGIA|ESCALA PARA HEMORRAGIA", na=False)].shape[0]
-            migracao_text = f"""
-        **Evolução (Comparativo com Snapshot):**
-        - **{migracao_melhora}** campanhas apresentaram melhora na classificação de quadrante (ex: saíram de Hemorragia).
-        - **{migracao_piora}** campanhas apresentaram piora na classificação, indicando a necessidade de revisão das ações tomadas.
-            """
-        
-        # Análise de Anúncios
-        ads_pausar = ads_panel_comp[ads_panel_comp["Acao_Anuncio"] == "Pausar anúncio"].shape[0] if "Acao_Anuncio" in ads_panel_comp.columns else 0
-        ads_vencedores = ads_panel_comp[ads_panel_comp["Status_Anuncio"] == "Vencedor"].shape[0] if "Status_Anuncio" in ads_panel_comp.columns else 0
-        
-        summary = f"""
-        A performance geral da sua conta de Mercado Livre Ads apresenta um **ROAS de {fmt_number_br(roas_val, 2)}x** e um **TACOS de {fmt_percent_br(tacos_pct)}**. 
-        
-        No total, foram investidos **{fmt_money_br(invest_ads)}** e gerados **{fmt_money_br(receita_ads)}** em receita direta de Ads.
-        
-        **Análise de Campanhas:**
-        - Atualmente, **{q_hemorragia}** campanhas estão classificadas como **HEMORRAGIA** (baixo ROAS), exigindo atenção imediata.
-        - **{q_escala}** campanhas estão prontas para **ESCALA** (ROAS forte com perda por orçamento).
-        {migracao_text}
-        **Análise Tática (Anúncios):**
-        - Foram identificados **{ads_vencedores}** anúncios vencedores que devem ser preservados.
-        - **{ads_pausar}** anúncios estão recomendados para pausa imediata por baixo desempenho e alto investimento.
-        
-        O plano de ação de 15 dias foca em resolver as campanhas em Hemorragia e maximizar o potencial das campanhas em Escala.
-        """
-        return summary
-    
-    st.markdown(generate_executive_summary(kpis, camp_strat_comp, ads_panel_comp))
-    
-    st.divider()
+    # Sumário Executivo removido conforme solicitação
     
     # -------------------------
     # KPIs
@@ -1223,7 +1174,7 @@ def main():
     # -------------------------
     if camp_snap is not None and not camp_snap.empty:
         st.divider()
-        st.header("📈 Evolução e Resultados (Comparativo)")
+        st.header(" Evolução e Resultados (Comparativo)")
         st.success("Snapshot de referência detectado! Analisando evolução das campanhas e anúncios...")
         
         # KPIs Comparativos Globais
@@ -1234,13 +1185,13 @@ def main():
             snap_invest = float(kpis_snap.get("Investimento Ads (R$)", 0))
             snap_receita = float(kpis_snap.get("Receita Ads (R$)", 0))
             snap_roas = float(kpis_snap.get("ROAS", 0))
-            st.sidebar.info("✅ Usando KPIs Globais do Snapshot")
+            st.sidebar.info(" Usando KPIs Globais do Snapshot")
         else:
             # Fallback para snapshots antigos (soma das campanhas ativas)
             snap_invest = float(pd.to_numeric(camp_snap["Investimento"], errors="coerce").fillna(0).sum())
             snap_receita = float(pd.to_numeric(camp_snap["Receita"], errors="coerce").fillna(0).sum())
             snap_roas = snap_receita / snap_invest if snap_invest > 0 else 0
-            st.sidebar.warning("⚠️ Usando Fallback (Soma de Campanhas)")
+            st.sidebar.warning(" Usando Fallback (Soma de Campanhas)")
         
         delta_invest = invest_ads - snap_invest
         delta_receita = receita_ads - snap_receita
