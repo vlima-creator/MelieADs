@@ -7,6 +7,7 @@ import re
 
 import ml_report as ml
 import os
+from funnel_real import render_funnel_chart_real
 
 
 # -------------------------
@@ -594,41 +595,66 @@ def format_table_br(df: pd.DataFrame) -> pd.DataFrame:
 # App
 # -------------------------
 def render_pareto_chart(df):
-    """Gera um gráfico de Linha do Tempo estilizado para Investimento e Vendas."""
+    """Gera um gráfico de Linha do Tempo estilizado para Investimento e Vendas ao longo do tempo."""
     if df is None or df.empty:
         return
     
-    # Preparar dados - usar as campanhas ordenadas por investimento
-    df_sorted = df.sort_values("Investimento", ascending=True).copy() if "Investimento" in df.columns else df.copy()
+    # Verificar se existe coluna de data
+    date_col = None
+    for col in ["Desde", "Data", "Date", "Data_Inicio"]:
+        if col in df.columns:
+            date_col = col
+            break
     
-    # Criar índices para simular timeline
-    df_sorted = df_sorted.reset_index(drop=True)
-    df_sorted["idx"] = range(len(df_sorted))
+    # Se houver coluna de data, agrupar por data; senão, usar índice
+    if date_col:
+        df_sorted = df.copy()
+        df_sorted[date_col] = pd.to_datetime(df_sorted[date_col], errors='coerce')
+        df_sorted = df_sorted.dropna(subset=[date_col])
+        df_sorted = df_sorted.sort_values(date_col)
+        
+        # Agrupar por data para acumular investimento e vendas
+        df_grouped = df_sorted.groupby(date_col).agg({
+            "Investimento": "sum",
+            "Qtd_Vendas": "sum" if "Qtd_Vendas" in df_sorted.columns else lambda x: 0
+        }).reset_index()
+        
+        # Calcular acumulado
+        df_grouped["Investimento_Acum"] = df_grouped["Investimento"].cumsum()
+        df_grouped["Vendas_Acum"] = df_grouped["Qtd_Vendas"].cumsum()
+        
+        x_values = df_grouped[date_col]
+        invest_values = df_grouped["Investimento_Acum"]
+        vendas_values = df_grouped["Vendas_Acum"]
+    else:
+        # Fallback: usar ordenação por investimento
+        df_sorted = df.sort_values("Investimento", ascending=True).copy() if "Investimento" in df.columns else df.copy()
+        df_sorted = df_sorted.reset_index(drop=True)
+        df_sorted["idx"] = range(len(df_sorted))
+        x_values = df_sorted["idx"]
+        invest_values = pd.to_numeric(df_sorted["Investimento"], errors="coerce").fillna(0)
+        vendas_values = pd.to_numeric(df_sorted["Qtd_Vendas"], errors="coerce").fillna(0) if "Qtd_Vendas" in df_sorted.columns else pd.Series([0] * len(df_sorted))
     
     fig = go.Figure()
     
-    # Linha de Investimento (amarela)
-    if "Investimento" in df_sorted.columns:
-        invest_values = pd.to_numeric(df_sorted["Investimento"], errors="coerce").fillna(0)
-        fig.add_trace(go.Scatter(
-            x=df_sorted["idx"],
+    # Linha de Investimento (verde militar)
+    fig.add_trace(go.Scatter(
+            x=x_values,
             y=invest_values,
             name="Valor Gasto",
-            line=dict(color="#ffe600", width=3),
+            line=dict(color="#556B2F", width=3),
             mode="lines+markers",
             fill="tozeroy",
-            fillcolor="rgba(255, 230, 0, 0.1)",
+            fillcolor="rgba(85, 107, 47, 0.1)",
             text=[f"R$ {v:,.2f}" for v in invest_values],
             textposition="top center",
-            textfont=dict(size=9, color="#ffe600"),
+            textfont=dict(size=9, color="#556B2F"),
             hovertemplate="<b>%{text}</b><extra></extra>"
         ))
     
     # Linha de Vendas (roxa)
-    if "Qtd_Vendas" in df_sorted.columns:
-        vendas_values = pd.to_numeric(df_sorted["Qtd_Vendas"], errors="coerce").fillna(0)
-        fig.add_trace(go.Scatter(
-            x=df_sorted["idx"],
+    fig.add_trace(go.Scatter(
+            x=x_values,
             y=vendas_values,
             name="Vendas",
             line=dict(color="#9b59b6", width=2),
@@ -643,7 +669,7 @@ def render_pareto_chart(df):
     fig.update_layout(
         title=dict(
             text="<b><i>Linha do Tempo</i></b>",
-            font=dict(size=16, color="#ffe600"),
+            font=dict(size=16, color="#556B2F"),
             x=0
         ),
         xaxis=dict(
@@ -706,7 +732,7 @@ def render_treemap_chart(df):
     custom_colorscale = [
         [0, "#f53d3d"],      # Vermelho (ROAS baixo)
         [0.3, "#ff9800"],    # Laranja
-        [0.5, "#ffe600"],    # Amarelo
+        [0.5, "#556B2F"],    # Amarelo
         [0.7, "#8bc34a"],    # Verde claro
         [1, "#00a650"]       # Verde (ROAS alto)
     ]
@@ -753,7 +779,7 @@ def render_custom_header():
     """Renderiza o header customizado com logo e barra amarela."""
     header_html = """
     <div style="
-        background: linear-gradient(180deg, #ffe600 0%, #ffe600 4px, transparent 4px);
+        background: linear-gradient(180deg, #556B2F 0%, #556B2F 4px, transparent 4px);
         padding: 20px 0 10px 0;
         margin-bottom: 20px;
     ">
@@ -761,7 +787,7 @@ def render_custom_header():
             <div style="
                 width: 50px;
                 height: 50px;
-                background: linear-gradient(135deg, #ffe600 0%, #d4c200 100%);
+                background: linear-gradient(135deg, #556B2F 0%, #3d4f2a 100%);
                 border-radius: 50%;
                 display: flex;
                 align-items: center;
@@ -782,14 +808,14 @@ def render_custom_header():
     st.markdown(header_html, unsafe_allow_html=True)
 
 
-def render_kpi_card(icon: str, title: str, subtitle: str, value: str, icon_color: str = "#ffe600"):
+def render_kpi_card(icon: str, title: str, subtitle: str, value: str, icon_color: str = "#556B2F"):
     """Renderiza um card de KPI customizado no estilo dos prints."""
     card_html = f"""
     <div style="
         background: linear-gradient(145deg, #141414 0%, #1a1a1a 100%);
         border-radius: 16px;
         padding: 20px;
-        border: 1px solid rgba(255, 230, 0, 0.2);
+        border: 1px solid rgba(85, 107, 47, 0.2);
         position: relative;
         min-height: 120px;
     ">
@@ -799,8 +825,8 @@ def render_kpi_card(icon: str, title: str, subtitle: str, value: str, icon_color
             right: 0;
             width: 30px;
             height: 30px;
-            border-top: 2px solid #ffe600;
-            border-right: 2px solid #ffe600;
+            border-top: 2px solid #556B2F;
+            border-right: 2px solid #556B2F;
             border-top-right-radius: 16px;
         "></div>
         <div style="
@@ -809,8 +835,8 @@ def render_kpi_card(icon: str, title: str, subtitle: str, value: str, icon_color
             left: 0;
             width: 30px;
             height: 30px;
-            border-bottom: 2px solid #ffe600;
-            border-left: 2px solid #ffe600;
+            border-bottom: 2px solid #556B2F;
+            border-left: 2px solid #556B2F;
             border-bottom-left-radius: 16px;
         "></div>
         <div style="color: #ffffff; font-size: 1rem; font-weight: 600; margin-bottom: 15px;">{title}</div>
@@ -841,7 +867,7 @@ def render_funnel_chart(data: dict, title: str = "Funil Geral"):
         return
     
     # Cores do funil (amarelo com gradiente)
-    colors = ["#ffe600", "#f0d800", "#e0ca00", "#d0bc00", "#c0ae00", "#b0a000", "#a09200"]
+    colors = ["#556B2F", "#f0d800", "#e0ca00", "#d0bc00", "#c0ae00", "#b0a000", "#a09200"]
     
     funnel_items = []
     max_value = max(data.values()) if data.values() else 1
@@ -866,7 +892,7 @@ def render_funnel_chart(data: dict, title: str = "Funil Geral"):
                 width: {width_pct}%;
                 min-width: 120px;
                 font-weight: 600;
-                box-shadow: 0 4px 10px rgba(255, 230, 0, 0.2);
+                box-shadow: 0 4px 10px rgba(85, 107, 47, 0.2);
             ">
                 <div style="font-size: 0.7rem; text-transform: uppercase;">{label}</div>
                 <div style="font-size: 1.2rem;">{value:,.0f}</div>
@@ -879,7 +905,7 @@ def render_funnel_chart(data: dict, title: str = "Funil Geral"):
         background: #141414;
         border-radius: 16px;
         padding: 20px;
-        border: 1px solid rgba(255, 230, 0, 0.2);
+        border: 1px solid rgba(85, 107, 47, 0.2);
     ">
         <div style="
             display: flex;
@@ -890,7 +916,7 @@ def render_funnel_chart(data: dict, title: str = "Funil Geral"):
             <div style="
                 width: 30px;
                 height: 30px;
-                background: #ffe600;
+                background: #556B2F;
                 border-radius: 6px;
                 display: flex;
                 align-items: center;
@@ -911,7 +937,7 @@ def render_timeline_chart(df, date_col: str, value_cols: list, title: str = "Lin
     
     fig = go.Figure()
     
-    colors = ["#ffe600", "#9b59b6", "#3498db", "#00a650"]
+    colors = ["#556B2F", "#9b59b6", "#3498db", "#00a650"]
     
     for i, col in enumerate(value_cols):
         if col in df.columns:
@@ -928,8 +954,8 @@ def render_timeline_chart(df, date_col: str, value_cols: list, title: str = "Lin
     
     fig.update_layout(
         title=dict(
-            text=f"<b style='color:#ffe600;font-style:italic;'>{title}</b>",
-            font=dict(size=16, color="#ffe600")
+            text=f"<b style='color:#556B2F;font-style:italic;'>{title}</b>",
+            font=dict(size=16, color="#556B2F")
         ),
         xaxis=dict(
             showgrid=False,
@@ -1221,7 +1247,7 @@ def main():
             title="Investimento",
             subtitle="Valor Gasto",
             value=fmt_money_br(invest_ads),
-            icon_color="#ffe600"
+            icon_color="#556B2F"
         ), unsafe_allow_html=True)
     
     with col2:
@@ -1230,7 +1256,7 @@ def main():
             title="Resultado",
             subtitle="Vendas",
             value=fmt_int_br(qtd_vendas),
-            icon_color="#ffe600"
+            icon_color="#556B2F"
         ), unsafe_allow_html=True)
     
     with col3:
@@ -1239,7 +1265,7 @@ def main():
             title="Retorno",
             subtitle="Valor de Receita",
             value=fmt_money_br(receita_ads),
-            icon_color="#ffe600"
+            icon_color="#556B2F"
         ), unsafe_allow_html=True)
     
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
@@ -1253,7 +1279,7 @@ def main():
             title="ROAS",
             subtitle="Retorno sobre Investimento",
             value=f"{fmt_number_br(roas_val, 2)}x",
-            icon_color="#ffe600"
+            icon_color="#556B2F"
         ), unsafe_allow_html=True)
     
     with col5:
@@ -1262,7 +1288,7 @@ def main():
             title="TACOS",
             subtitle="Custo sobre Receita",
             value=fmt_percent_br(tacos_pct),
-            icon_color="#ffe600"
+            icon_color="#556B2F"
         ), unsafe_allow_html=True)
     
     with col6:
@@ -1271,41 +1297,56 @@ def main():
             title="Campanhas",
             subtitle="Total Ativas",
             value=fmt_int_br(qtd_campanhas),
-            icon_color="#ffe600"
+            icon_color="#556B2F"
         ), unsafe_allow_html=True)
 
     st.divider()
-
-    # -------------------------
-    # Gráficos de Análise - Layout com Funil
-    # -------------------------
-    col_charts, col_funnel = st.columns([2, 1])
     
-    with col_charts:
-        # Gráfico de Linha do Tempo
-        if camp_strat is not None and not camp_strat.empty:
-            # Criar dados agregados para timeline (se houver dados de data)
-            render_pareto_chart(camp_strat)
+    # -------------------------
+    # Seção 1: Funil de Métricas (destaque no topo)
+    # -------------------------
+    st.markdown("""
+    <div style="
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    ">
+        <span style="color: #556B2F; font-size: 1.3rem; font-weight: 700;">🎯 Funil de Performance</span>
+    </div>
+    """, unsafe_allow_html=True)
     
-    with col_funnel:
-        # Funil Dinâmico baseado nos quadrantes
-        if camp_strat is not None and not camp_strat.empty:
-            q_counts = camp_strat["Quadrante"].value_counts() if "Quadrante" in camp_strat.columns else pd.Series()
-            
-            funnel_data = {
-                "Total Campanhas": qtd_campanhas,
-                "Escala": int(q_counts.get("ESCALA", 0) + q_counts.get("ESCALA_ORCAMENTO", 0)),
-                "Estável": int(q_counts.get("ESTAVEL", 0)),
-                "Competitividade": int(q_counts.get("COMPETITIVIDADE", 0)),
-                "Hemorragia": int(q_counts.get("HEMORRAGIA", 0)),
-            }
-            render_funnel_chart(funnel_data, "Funil de Campanhas")
-
+    if camp_strat is not None and not camp_strat.empty:
+        funnel_html = render_funnel_chart_real(kpis, camp_strat)
+        st.markdown(funnel_html, unsafe_allow_html=True)
+    
     st.divider()
     
-    # Treemap abaixo
-    st.subheader("Alocação de Investimento")
-    render_treemap_chart(camp_strat)
+    # -------------------------
+    # Seção 2: Gráficos de Análise (lado a lado)
+    # -------------------------
+    st.markdown("""
+    <div style="
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    ">
+        <span style="color: #556B2F; font-size: 1.3rem; font-weight: 700;">📊 Análise de Investimento</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_timeline, col_treemap = st.columns([1, 1])
+    
+    with col_timeline:
+        st.markdown("**Linha do Tempo - Gastos Acumulados**")
+        if camp_strat is not None and not camp_strat.empty:
+            render_pareto_chart(camp_strat)
+    
+    with col_treemap:
+        st.markdown("**Alocação por Campanha**")
+        if camp_strat is not None and not camp_strat.empty:
+            render_treemap_chart(camp_strat)
 
     st.divider()
 
@@ -1319,7 +1360,7 @@ def main():
         gap: 10px;
         margin-bottom: 15px;
     ">
-        <span style="color: #ffe600; font-size: 1.2rem; font-weight: 600; font-style: italic;">Visão Geral</span>
+        <span style="color: #556B2F; font-size: 1.2rem; font-weight: 600; font-style: italic;">Visão Geral</span>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1411,7 +1452,7 @@ def main():
         # Estilização básica para o plano
         def color_fase(val):
             if "Semana 1" in str(val): return "color: #3483fa; font-weight: bold"
-            if "Semana 2" in str(val): return "color: #ffe600; font-weight: bold"
+            if "Semana 2" in str(val): return "color: #556B2F; font-weight: bold"
             return ""
         
         st.dataframe(
