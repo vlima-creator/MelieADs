@@ -1016,7 +1016,7 @@ def main():
         conversoes_ml = int(camp_strat["Conversões"].sum()) if "Conversões" in camp_strat.columns else 0
         
         funil_html_ml = sf.create_sales_funnel_html(impressoes_ml, cliques_ml, conversoes_ml)
-        st.markdown(funil_html_ml, unsafe_allow_html=True)
+        st.components.v1.html(funil_html_ml, height=650, scrolling=False)
         
     elif selected_marketplace == "shopee":
         gmv_total = float(kpis.get("GMV Total", 0))
@@ -1067,7 +1067,7 @@ def main():
         conversoes_shopee = int(df_shopee_protecao["Conversões Totais"].sum()) if "Conversões Totais" in df_shopee_protecao.columns else 0
         
         funil_html_shopee = sf.create_sales_funnel_html(impressoes_shopee, cliques_shopee, conversoes_shopee)
-        st.markdown(funil_html_shopee, unsafe_allow_html=True)
+        st.components.v1.html(funil_html_shopee, height=650, scrolling=False)
 
     st.divider()
 
