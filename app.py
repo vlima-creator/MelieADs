@@ -1013,9 +1013,9 @@ def main():
         st.markdown("---")
         impressoes_ml = int(camp_strat["Impressões"].sum()) if "Impressões" in camp_strat.columns else 0
         cliques_ml = int(camp_strat["Cliques"].sum()) if "Cliques" in camp_strat.columns else 0
-        conversoes_ml = int(camp_strat["Conversões"].sum()) if "Conversões" in camp_strat.columns else 0
+        vendas_ml = int(camp_strat["Vendas"].sum()) if "Vendas" in camp_strat.columns else 0
         
-        funil_html_ml = sf.create_sales_funnel_html(impressoes_ml, cliques_ml, conversoes_ml)
+        funil_html_ml = sf.create_sales_funnel_html(impressoes_ml, cliques_ml, vendas_ml)
         st.components.v1.html(funil_html_ml, height=480, scrolling=False)
         
     elif selected_marketplace == "shopee":
@@ -1064,9 +1064,9 @@ def main():
         st.markdown("---")
         impressoes_shopee = int(df_shopee_protecao["Impressões"].sum()) if "Impressões" in df_shopee_protecao.columns else 0
         cliques_shopee = int(df_shopee_protecao["Cliques"].sum()) if "Cliques" in df_shopee_protecao.columns else 0
-        conversoes_shopee = int(df_shopee_protecao["Conversões"].sum()) if "Conversões" in df_shopee_protecao.columns else 0
+        vendas_shopee = int(df_shopee_protecao["Itens Vendidos"].sum()) if "Itens Vendidos" in df_shopee_protecao.columns else 0
         
-        funil_html_shopee = sf.create_sales_funnel_html(impressoes_shopee, cliques_shopee, conversoes_shopee)
+        funil_html_shopee = sf.create_sales_funnel_html(impressoes_shopee, cliques_shopee, vendas_shopee)
         st.components.v1.html(funil_html_shopee, height=480, scrolling=False)
 
     st.divider()
