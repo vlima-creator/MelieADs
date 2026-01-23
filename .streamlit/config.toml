@@ -1,15 +1,13 @@
 [theme]
-primaryColor = "#556B2F"
-backgroundColor = "#0a0a0a"
-secondaryBackgroundColor = "#141414"
+primaryColor = "#3483fa"
+backgroundColor = "#1a1a1a"
+secondaryBackgroundColor = "#2d2d2d"
 textColor = "#ffffff"
 font = "sans serif"
 
 [client]
-showErrorDetails = true
-toolbarMode = "viewer"
-disableWidgetStateDuplication = true
-maxMessageSize = 200
+showErrorDetails = false
+toolbarMode = "minimal"
 
 [logger]
 level = "error"
@@ -19,5 +17,3 @@ headless = true
 port = 8501
 enableXsrfProtection = true
 enableCORS = false
-maxUploadSize = 200
-runOnSave = true
