@@ -20,14 +20,6 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
     ctr = (cliques / impressoes * 100) if impressoes > 0 else 0
     cvr = (conversoes / cliques * 100) if cliques > 0 else 0
     
-    # Calcula porcentagens relativas
-    cliques_pct_initial = (cliques / impressoes * 100) if impressoes > 0 else 0
-    cliques_pct_previous = 100.0
-    
-    conversoes_pct_initial = (conversoes / impressoes * 100) if impressoes > 0 else 0
-    conversoes_pct_previous = (conversoes / cliques * 100) if cliques > 0 else 0
-    conversoes_pct_total = cvr
-    
     # Formata números
     impressoes_fmt = f"{impressoes:,.0f}".replace(",", ".")
     cliques_fmt = f"{cliques:,.0f}".replace(",", ".")
@@ -147,46 +139,6 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
             margin: -5px 0;
         }}
         
-        .stage-info {{
-            position: absolute;
-            right: -180px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 0.6rem 0.9rem;
-            border-radius: 8px;
-            min-width: 160px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-        }}
-        
-        .info-row {{
-            font-size: 0.7rem;
-            color: rgba(255, 255, 255, 0.7);
-            margin-bottom: 0.2rem;
-            line-height: 1.4;
-        }}
-        
-        .info-row:last-child {{
-            margin-bottom: 0;
-        }}
-        
-        .info-highlight {{
-            color: #ffffff;
-            font-weight: 600;
-        }}
-        
-        @media (max-width: 1200px) {{
-            .stage-info {{
-                position: static;
-                transform: none;
-                margin-top: 0.8rem;
-                margin-left: auto;
-                margin-right: auto;
-            }}
-        }}
-        
         @media (max-width: 768px) {{
             .funnel-wrapper {{
                 padding: 1rem;
@@ -204,11 +156,6 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
             
             .stage-label {{
                 font-size: 0.65rem;
-            }}
-            
-            .stage-info {{
-                min-width: 140px;
-                padding: 0.5rem 0.7rem;
             }}
         }}
     </style>
@@ -231,11 +178,6 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
                 <div class="stage-label">Cliques</div>
                 <div class="stage-value">{cliques_fmt}</div>
                 <div class="stage-rate">CTR: {ctr:.2f}%</div>
-                
-                <div class="stage-info">
-                    <div class="info-row"><span class="info-highlight">{cliques_pct_initial:.1f}%</span> of initial</div>
-                    <div class="info-row"><span class="info-highlight">{cliques_pct_previous:.1f}%</span> of previous</div>
-                </div>
             </div>
             
             <div class="connector"></div>
@@ -245,12 +187,6 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
                 <div class="stage-label">Vendas</div>
                 <div class="stage-value">{conversoes_fmt}</div>
                 <div class="stage-rate">CVR: {cvr:.2f}%</div>
-                
-                <div class="stage-info">
-                    <div class="info-row"><span class="info-highlight">{conversoes_pct_initial:.3f}%</span> of initial</div>
-                    <div class="info-row"><span class="info-highlight">{conversoes_pct_previous:.2f}%</span> of previous</div>
-                    <div class="info-row"><span class="info-highlight">{conversoes_pct_total:.2f}%</span> of total</div>
-                </div>
             </div>
         </div>
     </div>
