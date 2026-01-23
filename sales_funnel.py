@@ -1,11 +1,11 @@
 """
-Módulo para criar funil de vendas visual minimalista
+Módulo para criar funil de vendas visual com Liquid Glass
 Compatível com Mercado Livre e Shopee
 """
 
 def create_sales_funnel_html(impressoes, cliques, conversoes):
     """
-    Cria um funil de vendas HTML/CSS minimalista
+    Cria um funil de vendas HTML/CSS com efeito Liquid Glass
     
     Args:
         impressoes (int): Número total de impressões
@@ -22,10 +22,11 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
     
     # Calcula porcentagens relativas
     cliques_pct_initial = (cliques / impressoes * 100) if impressoes > 0 else 0
-    cliques_pct_previous = 100.0  # Cliques são 100% de impressões (etapa anterior)
+    cliques_pct_previous = 100.0
     
     conversoes_pct_initial = (conversoes / impressoes * 100) if impressoes > 0 else 0
     conversoes_pct_previous = (conversoes / cliques * 100) if cliques > 0 else 0
+    conversoes_pct_total = cvr
     
     # Formata números
     impressoes_fmt = f"{impressoes:,.0f}".replace(",", ".")
@@ -42,18 +43,19 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
         
         .funnel-wrapper {{
             width: 100%;
-            min-height: 500px;
-            background: #0a0a0f;
-            padding: 2rem;
+            min-height: 400px;
+            background: linear-gradient(135deg, rgba(10, 10, 15, 0.95) 0%, rgba(20, 20, 30, 0.95) 100%);
+            padding: 1.5rem;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            border-radius: 16px;
         }}
         
         .funnel-title {{
             text-align: center;
             color: #ffffff;
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             font-weight: 600;
-            margin-bottom: 3rem;
+            margin-bottom: 2rem;
             letter-spacing: 0.5px;
         }}
         
@@ -62,7 +64,7 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
             flex-direction: column;
             align-items: center;
             gap: 0;
-            max-width: 1200px;
+            max-width: 900px;
             margin: 0 auto;
             position: relative;
         }}
@@ -72,85 +74,97 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
             align-items: center;
             justify-content: center;
             flex-direction: column;
-            padding: 2rem;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 1.25rem 1.5rem;
             position: relative;
             transition: all 0.3s ease;
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }}
         
         .funnel-stage:hover {{
-            border-color: rgba(255, 255, 255, 0.6);
-            transform: translateY(-2px);
+            transform: translateY(-3px);
+            box-shadow: 
+                0 12px 40px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.15);
         }}
         
         .stage-impressoes {{
-            width: 100%;
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            margin-bottom: 1.5rem;
+            width: 90%;
+            background: linear-gradient(135deg, rgba(52, 131, 250, 0.2) 0%, rgba(52, 131, 250, 0.1) 100%);
+            border: 1px solid rgba(52, 131, 250, 0.4);
+            margin-bottom: 1rem;
         }}
         
         .stage-cliques {{
-            width: 80%;
-            background: linear-gradient(135deg, #34495e 0%, #415a77 100%);
-            margin-bottom: 1.5rem;
+            width: 75%;
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%);
+            border: 1px solid rgba(255, 193, 7, 0.4);
+            margin-bottom: 1rem;
         }}
         
         .stage-conversoes {{
             width: 60%;
-            background: linear-gradient(135deg, #16a085 0%, #1abc9c 100%);
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.1) 100%);
+            border: 1px solid rgba(76, 175, 80, 0.4);
         }}
         
         .stage-label {{
-            font-size: 0.85rem;
+            font-size: 0.7rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             color: rgba(255, 255, 255, 0.7);
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.4rem;
         }}
         
         .stage-value {{
-            font-size: 2rem;
+            font-size: 1.75rem;
             font-weight: 700;
             color: #ffffff;
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.2rem;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }}
         
         .stage-rate {{
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             color: rgba(255, 255, 255, 0.6);
             font-weight: 500;
         }}
         
         .connector {{
             width: 2px;
-            height: 30px;
+            height: 20px;
             background: repeating-linear-gradient(
                 to bottom,
                 rgba(255, 255, 255, 0.3) 0px,
-                rgba(255, 255, 255, 0.3) 5px,
-                transparent 5px,
-                transparent 10px
+                rgba(255, 255, 255, 0.3) 4px,
+                transparent 4px,
+                transparent 8px
             );
-            margin: -10px 0;
+            margin: -5px 0;
         }}
         
         .stage-info {{
             position: absolute;
-            right: -200px;
+            right: -180px;
             top: 50%;
             transform: translateY(-50%);
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 0.75rem 1rem;
-            border-radius: 4px;
-            min-width: 180px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 0.6rem 0.9rem;
+            border-radius: 8px;
+            min-width: 160px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
         }}
         
         .info-row {{
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: rgba(255, 255, 255, 0.7);
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.2rem;
             line-height: 1.4;
         }}
         
@@ -163,11 +177,11 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
             font-weight: 600;
         }}
         
-        @media (max-width: 1400px) {{
+        @media (max-width: 1200px) {{
             .stage-info {{
                 position: static;
                 transform: none;
-                margin-top: 1rem;
+                margin-top: 0.8rem;
                 margin-left: auto;
                 margin-right: auto;
             }}
@@ -176,20 +190,25 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
         @media (max-width: 768px) {{
             .funnel-wrapper {{
                 padding: 1rem;
+                min-height: 350px;
             }}
             
             .funnel-title {{
-                font-size: 1.2rem;
-                margin-bottom: 2rem;
+                font-size: 1rem;
+                margin-bottom: 1.5rem;
             }}
             
             .stage-value {{
-                font-size: 1.5rem;
+                font-size: 1.4rem;
+            }}
+            
+            .stage-label {{
+                font-size: 0.65rem;
             }}
             
             .stage-info {{
-                min-width: 150px;
-                padding: 0.5rem 0.75rem;
+                min-width: 140px;
+                padding: 0.5rem 0.7rem;
             }}
         }}
     </style>
@@ -228,9 +247,9 @@ def create_sales_funnel_html(impressoes, cliques, conversoes):
                 <div class="stage-rate">CVR: {cvr:.2f}%</div>
                 
                 <div class="stage-info">
-                    <div class="info-row"><span class="info-highlight">{conversoes_pct_initial:.2f}%</span> of initial</div>
-                    <div class="info-row"><span class="info-highlight">{conversoes_pct_previous:.1f}%</span> of previous</div>
-                    <div class="info-row"><span class="info-highlight">{cvr:.2f}%</span> of total</div>
+                    <div class="info-row"><span class="info-highlight">{conversoes_pct_initial:.3f}%</span> of initial</div>
+                    <div class="info-row"><span class="info-highlight">{conversoes_pct_previous:.2f}%</span> of previous</div>
+                    <div class="info-row"><span class="info-highlight">{conversoes_pct_total:.2f}%</span> of total</div>
                 </div>
             </div>
         </div>
