@@ -1,6 +1,8 @@
 """
-Função para renderizar o funil com métricas reais do relatório
+Função para renderizar o funil com métricas reais do relatório usando Plotly
 """
+import streamlit as st
+import plotly.graph_objects as go
 
 def fmt_money_br(x):
     if x is None or (hasattr(x, '__iter__') and len(str(x)) == 0):
@@ -35,8 +37,7 @@ def fmt_int_br(x):
         return "0"
 
 def render_funnel_chart_real(kpis, camp_agg):
-    """Renderiza um funil visual com métricas reais baseadas no relatório."""
-    import pandas as pd
+    """Renderiza um funil visual com Plotly baseado em métricas reais do relatório."""
     
     # Extrair métricas reais dos dados
     impressoes = camp_agg["Impressões"].sum() if "Impressões" in camp_agg.columns else 0
@@ -55,164 +56,99 @@ def render_funnel_chart_real(kpis, camp_agg):
     ticket_medio = (receita / vendas) if vendas > 0 else 0
     cpm = (investimento / impressoes * 1000) if impressoes > 0 else 0
     
-    # Calcular percentuais para a visualização do funil
-    pct_cliques = (cliques / impressoes * 100) if impressoes > 0 else 0
-    pct_vendas = (vendas / cliques * 100) if cliques > 0 else 0
+    # Criar funil com Plotly
+    fig = go.Figure(go.Funnel(
+        y=['Impressões<br>(Topo)', 'Cliques<br>(Meio)', 'Vendas<br>(Fundo)'],
+        x=[int(impressoes), int(cliques), int(vendas)],
+        marker=dict(
+            color=['#556B2F', '#6B8E23', '#7a9d2a'],
+            line=dict(color='white', width=2)
+        ),
+        textposition="inside",
+        textinfo="value+percent initial",
+        textfont=dict(color='white', size=12, family="Arial Black"),
+        connector=dict(line=dict(color="#556B2F", width=2)),
+        hovertemplate="<b>%{y}</b><br>Quantidade: %{value:,}<br>Percentual: %{percentInitial}<extra></extra>"
+    ))
     
-    funnel_html = f"""
-    <div style="
-        background: linear-gradient(145deg, #141414 0%, #1a1a1a 100%);
-        border-radius: 16px;
-        padding: 30px;
-        border: 1px solid rgba(85, 107, 47, 0.3);
-        margin-top: 10px;
-    ">
-        <div style="text-align: center; margin-bottom: 30px;">
-            <span style="color: #556B2F; font-size: 1.3rem; font-weight: 700;">FUNIL DE CONVERSÃO</span>
-            <p style="color: #999999; font-size: 0.9rem; margin-top: 5px;">Visualização da jornada de compra</p>
-        </div>
-        
-        <!-- FUNIL VISUAL -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin-bottom: 30px;">
-            
-            <!-- TOPO: IMPRESSÕES -->
-            <div style="
-                width: 100%;
-                max-width: 500px;
-                background: linear-gradient(135deg, #556B2F 0%, #6B8E23 100%);
-                border-radius: 12px;
-                padding: 20px;
-                text-align: center;
-                box-shadow: 0 4px 15px rgba(85, 107, 47, 0.3);
-                border: 1px solid rgba(107, 142, 35, 0.5);
-            ">
-                <div style="color: #ffffff; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
-                    Impressões (Topo do Funil)
-                </div>
-                <div style="color: #ffffff; font-size: 2rem; font-weight: 700; font-family: 'Courier New', monospace;">
-                    {fmt_int_br(impressoes)}
-                </div>
-                <div style="color: rgba(255,255,255,0.8); font-size: 0.8rem; margin-top: 8px;">
-                    CPM: {fmt_money_br(cpm)}
-                </div>
-            </div>
-            
-            <!-- SETA PARA BAIXO -->
-            <div style="color: #556B2F; font-size: 1.5rem; font-weight: 300;">↓</div>
-            
-            <!-- MEIO: CLIQUES -->
-            <div style="
-                width: 85%;
-                max-width: 425px;
-                background: linear-gradient(135deg, #6B8E23 0%, #556B2F 100%);
-                border-radius: 12px;
-                padding: 20px;
-                text-align: center;
-                box-shadow: 0 4px 15px rgba(85, 107, 47, 0.25);
-                border: 1px solid rgba(107, 142, 35, 0.4);
-            ">
-                <div style="color: #ffffff; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
-                    Cliques (Meio do Funil)
-                </div>
-                <div style="color: #ffffff; font-size: 2rem; font-weight: 700; font-family: 'Courier New', monospace;">
-                    {fmt_int_br(cliques)}
-                </div>
-                <div style="color: rgba(255,255,255,0.8); font-size: 0.8rem; margin-top: 8px;">
-                    CTR: {fmt_percent_br(ctr)} • CPC: {fmt_money_br(cpc)}
-                </div>
-            </div>
-            
-            <!-- SETA PARA BAIXO -->
-            <div style="color: #556B2F; font-size: 1.5rem; font-weight: 300;">↓</div>
-            
-            <!-- FUNDO: VENDAS -->
-            <div style="
-                width: 70%;
-                max-width: 350px;
-                background: linear-gradient(135deg, #556B2F 0%, #3d4f2a 100%);
-                border-radius: 12px;
-                padding: 20px;
-                text-align: center;
-                box-shadow: 0 4px 15px rgba(85, 107, 47, 0.2);
-                border: 1px solid rgba(85, 107, 47, 0.4);
-            ">
-                <div style="color: #ffffff; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
-                    Vendas (Fundo do Funil)
-                </div>
-                <div style="color: #ffffff; font-size: 2rem; font-weight: 700; font-family: 'Courier New', monospace;">
-                    {fmt_int_br(vendas)}
-                </div>
-                <div style="color: rgba(255,255,255,0.8); font-size: 0.8rem; margin-top: 8px;">
-                    Taxa: {fmt_percent_br(taxa_conversao)} • CPA: {fmt_money_br(cpa)}
-                </div>
-            </div>
-        </div>
-        
-        <!-- MÉTRICAS DE EFICIÊNCIA -->
-        <div style="
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(85, 107, 47, 0.3);
-        ">
-            <div style="
-                background: rgba(85, 107, 47, 0.15);
-                border-left: 3px solid #556B2F;
-                border-radius: 8px;
-                padding: 15px;
-                text-align: center;
-            ">
-                <div style="color: #999999; font-size: 0.8rem; text-transform: uppercase; font-weight: 600; margin-bottom: 8px;">ROAS</div>
-                <div style="color: #ffffff; font-size: 1.8rem; font-weight: 700; font-family: 'Courier New', monospace;">
-                    {fmt_number_br(roas, 2)}x
-                </div>
-                <div style="color: #999999; font-size: 0.75rem; margin-top: 5px;">Retorno sobre Investimento</div>
-            </div>
-            
-            <div style="
-                background: rgba(85, 107, 47, 0.15);
-                border-left: 3px solid #6B8E23;
-                border-radius: 8px;
-                padding: 15px;
-                text-align: center;
-            ">
-                <div style="color: #999999; font-size: 0.8rem; text-transform: uppercase; font-weight: 600; margin-bottom: 8px;">RECEITA TOTAL</div>
-                <div style="color: #ffffff; font-size: 1.8rem; font-weight: 700; font-family: 'Courier New', monospace;">
-                    {fmt_money_br(receita)}
-                </div>
-                <div style="color: #999999; font-size: 0.75rem; margin-top: 5px;">GMV Gerado</div>
-            </div>
-            
-            <div style="
-                background: rgba(85, 107, 47, 0.15);
-                border-left: 3px solid #556B2F;
-                border-radius: 8px;
-                padding: 15px;
-                text-align: center;
-            ">
-                <div style="color: #999999; font-size: 0.8rem; text-transform: uppercase; font-weight: 600; margin-bottom: 8px;">INVESTIMENTO</div>
-                <div style="color: #ffffff; font-size: 1.8rem; font-weight: 700; font-family: 'Courier New', monospace;">
-                    {fmt_money_br(investimento)}
-                </div>
-                <div style="color: #999999; font-size: 0.75rem; margin-top: 5px;">Total Gasto</div>
-            </div>
-            
-            <div style="
-                background: rgba(85, 107, 47, 0.15);
-                border-left: 3px solid #6B8E23;
-                border-radius: 8px;
-                padding: 15px;
-                text-align: center;
-            ">
-                <div style="color: #999999; font-size: 0.8rem; text-transform: uppercase; font-weight: 600; margin-bottom: 8px;">TICKET MÉDIO</div>
-                <div style="color: #ffffff; font-size: 1.8rem; font-weight: 700; font-family: 'Courier New', monospace;">
-                    {fmt_money_br(ticket_medio)}
-                </div>
-                <div style="color: #999999; font-size: 0.75rem; margin-top: 5px;">Valor Médio por Venda</div>
-            </div>
-        </div>
-    </div>
-    """
-    return funnel_html
+    fig.update_layout(
+        title=dict(
+            text="<b>Funil de Conversão</b><br><sub>Jornada de Compra</sub>",
+            font=dict(size=16, color="#556B2F"),
+            x=0.5,
+            xanchor="center"
+        ),
+        plot_bgcolor="#0a0a0a",
+        paper_bgcolor="#0a0a0a",
+        font=dict(color="#ffffff", size=12),
+        height=450,
+        margin=dict(l=50, r=50, t=80, b=50),
+        showlegend=False
+    )
+    
+    # Renderizar gráfico
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Métricas do funil em colunas
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="CTR",
+            value=fmt_percent_br(ctr),
+            delta="Meta: 2.5%"
+        )
+    
+    with col2:
+        st.metric(
+            label="CPC",
+            value=fmt_money_br(cpc),
+            delta="Custo por Clique"
+        )
+    
+    with col3:
+        st.metric(
+            label="Taxa de Conversão",
+            value=fmt_percent_br(taxa_conversao),
+            delta="Meta: 2.0%"
+        )
+    
+    with col4:
+        st.metric(
+            label="CPA",
+            value=fmt_money_br(cpa),
+            delta="Custo por Aquisição"
+        )
+    
+    # Resumo de eficiência
+    st.markdown("---")
+    
+    col_eff1, col_eff2, col_eff3, col_eff4 = st.columns(4)
+    
+    with col_eff1:
+        st.metric(
+            label="ROAS",
+            value=f"{fmt_number_br(roas, 2)}x",
+            delta="Retorno sobre Investimento"
+        )
+    
+    with col_eff2:
+        st.metric(
+            label="Investimento Total",
+            value=fmt_money_br(investimento),
+            delta="Valor Gasto"
+        )
+    
+    with col_eff3:
+        st.metric(
+            label="Receita Total",
+            value=fmt_money_br(receita),
+            delta="GMV Gerado"
+        )
+    
+    with col_eff4:
+        st.metric(
+            label="Ticket Médio",
+            value=fmt_money_br(ticket_medio),
+            delta="Valor Médio por Venda"
+        )

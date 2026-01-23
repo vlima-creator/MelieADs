@@ -1317,8 +1317,7 @@ def main():
     """, unsafe_allow_html=True)
     
     if camp_strat is not None and not camp_strat.empty:
-        funnel_html = render_funnel_chart_real(kpis, camp_strat)
-        st.markdown(funnel_html, unsafe_allow_html=True)
+        render_funnel_chart_real(kpis, camp_strat)
     
     st.divider()
     
