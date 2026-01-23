@@ -143,44 +143,47 @@ with st.sidebar:
 # KPIs - Primeira linha
 st.markdown("### 💰 Principais Métricas")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.metric(
         label="Investimento",
         value=fmt_money(kpis['Investimento']),
-        delta="↑ 15.8%",
-        delta_color="off"
+        delta="↑ 15.8%"
     )
 
 with col2:
     st.metric(
         label="Receita (GMV)",
         value=fmt_money(kpis['Receita']),
-        delta="↑ 17.5%",
-        delta_color="off"
+        delta="↑ 17.5%"
     )
 
 with col3:
     st.metric(
-        label="ROAS",
-        value=f"{kpis['ROAS']:.2f}x",
-        delta="↑ 12.2%",
-        delta_color="off"
+        label="Vendas",
+        value=fmt_number(kpis['Vendas']),
+        delta="↑ 22.3%"
     )
 
 with col4:
     st.metric(
+        label="ROAS",
+        value=f"{kpis['ROAS']:.2f}x",
+        delta="↑ 12.2%"
+    )
+
+with col5:
+    st.metric(
         label="ACOS",
         value=fmt_percent(kpis['ACOS']),
-        delta="↓ 2.4%",
-        delta_color="off"
+        delta="↓ 2.4%"
     )
 
 st.markdown("---")
 
 # Gráfico de Linha do Tempo
-st.markdown("### 📊 Evolução de Gastos vs. Receita")
+st.markdown("### 📊 Evolução de Gastos vs. Vendas")
 
 # Gerar dados de série temporal
 dates = pd.date_range(start='2026-01-01', periods=7, freq='W')
@@ -193,35 +196,49 @@ fig_timeline = go.Figure()
 fig_timeline.add_trace(go.Scatter(
     x=dates,
     y=investimento_data,
-    name="Investimento",
+    name="Investimento (R$)",
     line=dict(color="#556B2F", width=3),
     fill="tozeroy",
     fillcolor="rgba(85, 107, 47, 0.2)",
     mode="lines+markers",
-    marker=dict(size=8)
+    marker=dict(size=8),
+    yaxis="y1"
 ))
 
 # Linha de Vendas
 fig_timeline.add_trace(go.Scatter(
     x=dates,
     y=vendas_data,
-    name="Vendas",
+    name="Vendas (Qtd)",
     line=dict(color="#6B8E23", width=3),
-    yaxis="y2",
     mode="lines+markers",
-    marker=dict(size=8)
+    marker=dict(size=8),
+    yaxis="y2"
 ))
 
 fig_timeline.update_layout(
-    title="Comparativo Semanal de Performance",
+    title="Comparativo Semanal: Investimento vs. Vendas",
     xaxis=dict(title="Data", showgrid=False),
-    yaxis=dict(title="Investimento (R$)", showgrid=True, gridcolor="#2a2a2a"),
-    yaxis2=dict(title="Vendas (Qtd)", overlaying="y", side="right"),
+    yaxis=dict(
+        title="Investimento (R$)",
+        showgrid=True,
+        gridcolor="#2a2a2a",
+        titlefont=dict(color="#556B2F"),
+        tickfont=dict(color="#556B2F")
+    ),
+    yaxis2=dict(
+        title="Vendas (Quantidade)",
+        overlaying="y",
+        side="right",
+        titlefont=dict(color="#6B8E23"),
+        tickfont=dict(color="#6B8E23")
+    ),
     plot_bgcolor="#0a0a0a",
     paper_bgcolor="#0a0a0a",
     font=dict(color="#ffffff"),
     hovermode="x unified",
-    height=400
+    height=400,
+    legend=dict(x=0.01, y=0.99, bgcolor="rgba(0,0,0,0.5)")
 )
 
 st.plotly_chart(fig_timeline, use_container_width=True)
@@ -233,28 +250,27 @@ col_funil_left, col_funil_right = st.columns([2, 1])
 
 with col_funil_left:
     # Dados do funil
-    funnel_data = {
-        'Etapa': ['Impressões', 'Cliques', 'Vendas'],
-        'Valor': [kpis['Impressões'], kpis['Cliques'], kpis['Vendas']]
-    }
+    funnel_labels = ['Impressões', 'Cliques', 'Vendas']
+    funnel_values = [kpis['Impressões'], kpis['Cliques'], kpis['Vendas']]
     
     fig_funnel = go.Figure(go.Funnel(
-        y=funnel_data['Etapa'],
-        x=funnel_data['Valor'],
+        y=funnel_labels,
+        x=funnel_values,
         marker=dict(
             color=['#556B2F', '#6B8E23', '#7a9d2a'],
-            line=dict(color='white', width=2)
+            line=dict(color='#ffffff', width=2)
         ),
         textposition="inside",
         textinfo="value+percent initial",
-        textfont=dict(color='white', size=12)
+        textfont=dict(color='white', size=12, family="Arial Black"),
+        connector=dict(line=dict(color="#556B2F", width=2))
     ))
     
     fig_funnel.update_layout(
         title="Jornada de Conversão",
         plot_bgcolor="#0a0a0a",
         paper_bgcolor="#0a0a0a",
-        font=dict(color="#ffffff"),
+        font=dict(color="#ffffff", size=12),
         height=350,
         margin=dict(l=50, r=50, t=50, b=50)
     )
@@ -264,19 +280,22 @@ with col_funil_left:
 with col_funil_right:
     st.markdown("#### 📈 Métricas do Funil")
     
+    ctr = (kpis['Cliques'] / kpis['Impressões'] * 100) if kpis['Impressões'] > 0 else 0
+    taxa_conversao = (kpis['Vendas'] / kpis['Cliques'] * 100) if kpis['Cliques'] > 0 else 0
+    
     st.markdown(f"""
-    **Topo (Awareness)**
+    **🎯 Topo (Awareness)**
     - Impressões: {fmt_number(kpis['Impressões'])}
     - CPM: {fmt_money(kpis['CPM'])}
     
-    **Meio (Consideração)**
+    **📍 Meio (Consideração)**
     - Cliques: {fmt_number(kpis['Cliques'])}
-    - CTR: {fmt_percent(kpis['CTR'])}
+    - CTR: {fmt_percent(ctr)}
     - CPC: {fmt_money(kpis['CPC'])}
     
-    **Fundo (Conversão)**
+    **✅ Fundo (Conversão)**
     - Vendas: {fmt_number(kpis['Vendas'])}
-    - Taxa Conv.: {fmt_percent((kpis['Vendas']/kpis['Cliques']*100))}
+    - Taxa Conv.: {fmt_percent(taxa_conversao)}
     - CPA: {fmt_money(kpis['CPA'])}
     """)
 
@@ -295,9 +314,10 @@ with col_sec1:
     )
 
 with col_sec2:
+    taxa_conv = (kpis['Vendas']/kpis['Cliques']*100) if kpis['Cliques'] > 0 else 0
     st.metric(
         label="Taxa de Conversão",
-        value=fmt_percent((kpis['Vendas']/kpis['Cliques']*100)),
+        value=fmt_percent(taxa_conv),
         delta="Objetivo: 2.0%"
     )
 
