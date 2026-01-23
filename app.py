@@ -7,6 +7,7 @@ import re
 
 import ml_report as ml
 import os
+import liquid_glass_components as lgc
 
 
 # -------------------------
@@ -673,7 +674,7 @@ def main():
     except FileNotFoundError:
         st.warning("Arquivo de estilo não encontrado. O dashboard será exibido com o tema padrão.")
 
-    st.title("📊 Mercado Livre Ads - Dashboard e Relatório")
+    st.title("📈 Mercado Livre Ads - Dashboard")
 
     with st.sidebar:
         st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -848,64 +849,15 @@ def main():
         st.exception(e)
         return
 
-    # -------------------------
-    # Sumário Executivo
-    # -------------------------
-    st.header("Sumário Executivo")
-    
-    # Geração do texto do sumário
-    def generate_executive_summary(kpis, camp_strat_comp, ads_panel_comp):
-        invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
-        receita_ads = float(kpis.get("Receita Ads (R$)", 0))
-        roas_val = float(kpis.get("ROAS", 0))
-        tacos_pct = float(kpis.get("TACOS", 0)) * 100
-        
-        # Análise de Quadrantes
-        q_counts = camp_strat_comp["Quadrante"].value_counts()
-        q_hemorragia = q_counts.get("HEMORRAGIA", 0)
-        q_escala = q_counts.get("ESCALA", 0)
-        
-        # Análise de Migração (Protegida contra colunas ausentes)
-        migracao_text = ""
-        if "Migracao_Quadrante" in camp_strat_comp.columns:
-            migracao_melhora = camp_strat_comp[camp_strat_comp["Migracao_Quadrante"].str.contains("HEMORRAGIA PARA ESTÁVEL|HEMORRAGIA PARA ESCALA|ESTÁVEL PARA ESCALA", na=False)].shape[0]
-            migracao_piora = camp_strat_comp[camp_strat_comp["Migracao_Quadrante"].str.contains("ESTÁVEL PARA HEMORRAGIA|ESCALA PARA HEMORRAGIA", na=False)].shape[0]
-            migracao_text = f"""
-        **Evolução (Comparativo com Snapshot):**
-        - **{migracao_melhora}** campanhas apresentaram melhora na classificação de quadrante (ex: saíram de Hemorragia).
-        - **{migracao_piora}** campanhas apresentaram piora na classificação, indicando a necessidade de revisão das ações tomadas.
-            """
-        
-        # Análise de Anúncios
-        ads_pausar = ads_panel_comp[ads_panel_comp["Acao_Anuncio"] == "Pausar anúncio"].shape[0] if "Acao_Anuncio" in ads_panel_comp.columns else 0
-        ads_vencedores = ads_panel_comp[ads_panel_comp["Status_Anuncio"] == "Vencedor"].shape[0] if "Status_Anuncio" in ads_panel_comp.columns else 0
-        
-        summary = f"""
-        A performance geral da sua conta de Mercado Livre Ads apresenta um **ROAS de {fmt_number_br(roas_val, 2)}x** e um **TACOS de {fmt_percent_br(tacos_pct)}**. 
-        
-        No total, foram investidos **{fmt_money_br(invest_ads)}** e gerados **{fmt_money_br(receita_ads)}** em receita direta de Ads.
-        
-        **Análise de Campanhas:**
-        - Atualmente, **{q_hemorragia}** campanhas estão classificadas como **HEMORRAGIA** (baixo ROAS), exigindo atenção imediata.
-        - **{q_escala}** campanhas estão prontas para **ESCALA** (ROAS forte com perda por orçamento).
-        {migracao_text}
-        **Análise Tática (Anúncios):**
-        - Foram identificados **{ads_vencedores}** anúncios vencedores que devem ser preservados.
-        - **{ads_pausar}** anúncios estão recomendados para pausa imediata por baixo desempenho e alto investimento.
-        
-        O plano de ação de 15 dias foca em resolver as campanhas em Hemorragia e maximizar o potencial das campanhas em Escala.
-        """
-        return summary
-    
-    st.markdown(generate_executive_summary(kpis, camp_strat_comp, ads_panel_comp))
-    
-    st.divider()
+
     
     # -------------------------
-    # KPIs
+    # KPIs - Liquid Glass Style
     # -------------------------
-    st.header("Indicadores Chave de Performance (KPIs)")
-    cols = st.columns(4)
+    lgc.render_glass_section_header(
+        "Indicadores Chave de Performance",
+        "Visão geral do desempenho das campanhas"
+    )
 
     invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
     receita_ads = float(kpis.get("Receita Ads (R$)", 0))
@@ -913,33 +865,29 @@ def main():
     tacos_val = float(kpis.get("TACOS", 0))
     tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
 
-    cols[0].metric("💰 Investimento Ads", fmt_money_br(invest_ads))
-    cols[1].metric("📈 Receita Ads", fmt_money_br(receita_ads))
-    
-    # ROAS com cor dinâmica
-    roas_label = "Bom" if roas_val >= 5 else "Abaixo da meta"
-    cols[2].metric(
-        "🎯 ROAS", 
-        fmt_number_br(roas_val, 2), 
-        delta=roas_label, 
-        delta_color="normal" if roas_val >= 5 else "inverse"
-    )
-
-    # TACOS com cor dinâmica
-    if tacos_pct <= 3:
-        tacos_label = "Excelente"
-        tacos_color = "normal"
-    elif tacos_pct <= 5:
-        tacos_label = "Bom"
-        tacos_color = "normal"
-    elif tacos_pct <= 7:
-        tacos_label = "Alto"
-        tacos_color = "inverse"
-    else:
-        tacos_label = "Muito Alto"
-        tacos_color = "inverse"
-    
-    cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
+    # Renderiza KPIs com efeito Liquid Glass
+    lgc.render_glass_kpi_row([
+        {
+            "icon": "💵",
+            "label": "INVESTIMENTO ADS",
+            "value": fmt_money_br(invest_ads)
+        },
+        {
+            "icon": "💰",
+            "label": "RECEITA ADS",
+            "value": fmt_money_br(receita_ads)
+        },
+        {
+            "icon": "📉",
+            "label": "ROAS",
+            "value": f"{fmt_number_br(roas_val, 2)}x"
+        },
+        {
+            "icon": "🎯",
+            "label": "TACOS",
+            "value": fmt_percent_br(tacos_pct)
+        }
+    ])
 
     st.divider()
 
@@ -982,7 +930,7 @@ def main():
     # -------------------------
     # Nível de anúncio (Patrocinados)
     # -------------------------
-    with st.expander("🎯 Análise Tática por Anúncio (Ads)", expanded=False):
+    with st.expander("📄 Análise Tática por Anúncio (Ads)", expanded=False):
         if ads_panel is None or (hasattr(ads_panel, "empty") and ads_panel.empty):
             st.info("Sem dados de anúncios patrocinados para analisar.")
         else:
@@ -1072,7 +1020,7 @@ def main():
     acos_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(acos_disp), drop_cpi_cols=True, drop_roas_generic=False)
     acos_fmt = format_table_br(acos_view)
 
-    st.header("🎯 Ações Recomendadas por Categoria")
+    st.header("📄 Ações Recomendadas por Categoria")
     
     tab_pausar, tab_entrar, tab_escalar, tab_roas = st.tabs([
         "🛑 Pausar/Revisar", "✅ Entrar em Ads", "🚀 Escalar Orçamento", "⬇️ Baixar ROAS Objetivo"
@@ -1084,17 +1032,17 @@ def main():
         st.dataframe(pause_fmt, use_container_width=True)
     
     with tab_entrar:
-        st.subheader("✅ Oportunidades para entrar em Ads")
+        st.subheader("▫️ Oportunidades para entrar em Ads")
         st.info("Anúncios orgânicos com alta conversão que ainda não estão em Ads.")
         st.dataframe(enter_fmt, use_container_width=True)
 
     with tab_escalar:
-        st.subheader("🚀 Campanhas para escalar orçamento")
+        st.subheader("▫️ Campanhas para escalar orçamento")
         st.info("Campanhas com ROAS forte que estão perdendo impressões por orçamento.")
         st.dataframe(scale_fmt, use_container_width=True)
 
     with tab_roas:
-        st.subheader("⬇️ Campanhas para baixar ROAS objetivo")
+        st.subheader("▫️ Campanhas para baixar ROAS objetivo")
         st.info("Campanhas competitivas que podem ganhar mais mercado reduzindo o ROAS alvo.")
         st.dataframe(acos_fmt, use_container_width=True)
 
@@ -1156,7 +1104,7 @@ def main():
     # -------------------------
     if camp_snap is not None and not camp_snap.empty:
         st.divider()
-        st.header("📈 Evolução e Resultados (Comparativo)")
+        st.header("📉 Evolução e Resultados (Comparativo)")
         st.success("Snapshot de referência detectado! Analisando evolução das campanhas e anúncios...")
         
         # KPIs Comparativos Globais

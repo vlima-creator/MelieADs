@@ -1,172 +1,353 @@
-/* Estilo customizado para Streamlit - Tema Mercado Livre Ads */
+/* ========================================
+   Liquid Glass Theme - Glassmorphism Style
+   Minimalista e Moderno
+   ======================================== */
 
 /* Cores base */
 :root {
-    --meli-yellow: #ffe600;
-    --meli-blue: #3483fa;
-    --meli-green: #00a650;
-    --meli-red: #f53d3d;
-    --meli-dark: #121212;
-    --meli-light-dark: #1e1e1e;
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-shadow: rgba(0, 0, 0, 0.3);
+    --accent-primary: #3483fa;
+    --accent-secondary: #ffe600;
+    --accent-success: #00a650;
+    --accent-danger: #f53d3d;
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.7);
+    --bg-dark: #0a0a0a;
+    --bg-darker: #050505;
 }
 
-/* Fundo e texto principal */
+/* Fundo principal com gradiente suave */
 section.main {
-    background-color: var(--meli-dark);
-    color: #f0f0f0;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    color: var(--text-primary);
 }
 
-/* Barra lateral */
+/* Barra lateral com efeito glass */
 .stSidebar {
-    background-color: var(--meli-light-dark);
+    background: rgba(10, 10, 10, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid var(--glass-border);
 }
 
 /* Título principal */
 h1 {
-    border-bottom: 3px solid var(--meli-yellow);
-    padding-bottom: 5px;
+    color: var(--text-primary);
+    font-weight: 300;
+    letter-spacing: -0.5px;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 15px;
+    margin-bottom: 30px;
 }
 
-/* Cards de KPI (st.metric) */
+h2, h3 {
+    color: var(--text-primary);
+    font-weight: 300;
+    letter-spacing: -0.3px;
+}
+
+/* ========================================
+   CARDS KPI - Liquid Glass Effect
+   ======================================== */
 div[data-testid="stMetric"] {
-    background-color: var(--meli-light-dark);
-    border-radius: 8px;
-    padding: 15px;
-    border-left: 5px solid var(--meli-blue);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 24px 20px;
+    box-shadow: 
+        0 8px 32px 0 rgba(0, 0, 0, 0.37),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Cor do valor principal do KPI */
+div[data-testid="stMetric"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+        0 12px 48px 0 rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Valor do KPI */
 div[data-testid="stMetricValue"] {
-    color: var(--meli-yellow);
-    font-size: 1.8rem;
+    color: var(--text-primary);
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -1px;
 }
 
-/* Cor do label do KPI */
+/* Label do KPI */
 div[data-testid="stMetricLabel"] {
-    color: #ccc;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
-/* Cor do delta (para ROAS/TACOS) */
+/* Delta do KPI */
 div[data-testid="stMetricDelta"] {
-    font-weight: bold;
+    font-weight: 500;
+    font-size: 0.9rem;
 }
 
-/* Tabela (DataFrame) */
+/* ========================================
+   TABELAS - Glass Effect
+   ======================================== */
 .stDataFrame {
-    border-radius: 8px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
     overflow: hidden;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
-/* Estilo para a tabela de Plano de Ação */
 .stDataFrame table {
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
-/* Estilo para a tabela de Plano de Ação (cores das fases) */
-.stDataFrame table tr td:nth-child(2) { /* Coluna Fase */
-    font-weight: bold;
+.stDataFrame thead th {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--glass-border);
 }
 
-/* Estilo para a tabela de Plano de Ação (cores das fases) */
-.stDataFrame table tr td:nth-child(2):contains("Semana 1") {
-    background-color: rgba(52, 131, 250, 0.2); /* Azul claro */
+.stDataFrame tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    color: var(--text-primary);
 }
 
-.stDataFrame table tr td:nth-child(2):contains("Semana 2") {
-    background-color: rgba(255, 230, 0, 0.2); /* Amarelo claro */
+.stDataFrame tbody tr:hover {
+    background: rgba(255, 255, 255, 0.02);
 }
 
-/* Estilo para a tabela de Ações (cores das ações) */
-/* Pausar/Revisar */
-.stDataFrame table tr td:contains("Revisar/pausar"),
+/* Cores dos Quadrantes - Minimalista */
 .stDataFrame table tr td:contains("HEMORRAGIA") {
-    background-color: rgba(245, 61, 61, 0.2); /* Vermelho claro */
-    color: var(--meli-red);
-    font-weight: bold;
+    background: rgba(245, 61, 61, 0.1);
+    color: var(--accent-danger);
+    font-weight: 500;
+    border-left: 2px solid var(--accent-danger);
 }
 
-/* Escalar Orçamento */
-.stDataFrame table tr td:contains("Aumentar orcamento"),
-.stDataFrame table tr td:contains("ESCALA_ORCAMENTO") {
-    background-color: rgba(0, 166, 80, 0.2); /* Verde claro */
-    color: var(--meli-green);
-    font-weight: bold;
+.stDataFrame table tr td:contains("ESCALA") {
+    background: rgba(0, 166, 80, 0.1);
+    color: var(--accent-success);
+    font-weight: 500;
+    border-left: 2px solid var(--accent-success);
 }
 
-/* Baixar ROAS Objetivo */
-.stDataFrame table tr td:contains("Baixar ROAS objetivo"),
 .stDataFrame table tr td:contains("COMPETITIVIDADE") {
-    background-color: rgba(255, 230, 0, 0.2); /* Amarelo claro */
-    color: var(--meli-yellow);
-    font-weight: bold;
+    background: rgba(255, 230, 0, 0.1);
+    color: var(--accent-secondary);
+    font-weight: 500;
+    border-left: 2px solid var(--accent-secondary);
 }
 
-/* Manter */
-.stDataFrame table tr td:contains("Manter"),
 .stDataFrame table tr td:contains("ESTAVEL") {
-    background-color: rgba(52, 131, 250, 0.1); /* Azul claro */
-    color: var(--meli-blue);
+    background: rgba(52, 131, 250, 0.1);
+    color: var(--accent-primary);
+    font-weight: 500;
+    border-left: 2px solid var(--accent-primary);
 }
 
-/* Estilo para a tabela de Estoque */
-.stDataFrame table tr td:contains("CRITICO") {
-    background-color: rgba(255, 165, 0, 0.2); /* Laranja claro */
-    color: orange;
-    font-weight: bold;
-}
-
-.stDataFrame table tr td:contains("ZERADO") {
-    background-color: rgba(245, 61, 61, 0.3); /* Vermelho mais forte */
-    color: var(--meli-red);
-    font-weight: bold;
-}
-
-/* Botões */
+/* ========================================
+   BOTÕES - Glass Effect
+   ======================================== */
 .stButton>button {
-    background-color: var(--meli-blue);
-    color: white;
-    border-radius: 5px;
-    border: none;
-    padding: 10px 20px;
-    font-weight: bold;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 12px 24px;
+    font-weight: 500;
+    font-size: 0.95rem;
+    letter-spacing: 0.3px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.2);
 }
 
 .stButton>button:hover {
-    background-color: #2a6edb;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px 0 rgba(0, 0, 0, 0.3);
 }
 
-/* Mensagens de status */
+.stButton>button:active {
+    transform: translateY(0);
+}
+
+/* ========================================
+   ALERTAS - Glass Effect
+   ======================================== */
 div[data-testid="stAlert"] {
-    border-radius: 8px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.2);
 }
 
-div[data-testid="stAlert"] div[role="alert"] {
-    background-color: var(--meli-light-dark);
-    border-left: 5px solid;
+div[data-testid="stAlert"][data-baseweb="notification"] {
+    border-left-width: 3px;
 }
 
-div[data-testid="stAlert"] div[role="alert"].st-success {
-    border-left-color: var(--meli-green);
-}
-
-div[data-testid="stAlert"] div[role="alert"].st-warning {
-    border-left-color: var(--meli-yellow);
-}
-
-div[data-testid="stAlert"] div[role="alert"].st-error {
-    border-left-color: var(--meli-red);
-}
-
-/* Expander */
+/* ========================================
+   EXPANDER - Glass Effect
+   ======================================== */
 .streamlit-expanderHeader {
-    background-color: var(--meli-light-dark);
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #333;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    transition: all 0.3s ease;
+}
+
+.streamlit-expanderHeader:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
 }
 
 .streamlit-expanderContent {
-    padding: 10px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 0 0 12px 12px;
+}
+
+/* ========================================
+   INPUTS - Glass Effect
+   ======================================== */
+.stTextInput>div>div>input,
+.stNumberInput>div>div>input,
+.stSelectbox>div>div>div {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+.stTextInput>div>div>input:focus,
+.stNumberInput>div>div>input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+/* ========================================
+   GRÁFICOS - Glass Container
+   ======================================== */
+.js-plotly-plot {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* ========================================
+   SCROLLBAR - Minimalista
+   ======================================== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* ========================================
+   DIVIDER - Sutil
+   ======================================== */
+hr {
+    border: none;
+    border-top: 1px solid var(--glass-border);
+    margin: 32px 0;
+}
+
+/* ========================================
+   FILE UPLOADER - Glass Effect
+   ======================================== */
+.stFileUploader {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px dashed var(--glass-border);
+    border-radius: 12px;
+    padding: 24px;
+    transition: all 0.3s ease;
+}
+
+.stFileUploader:hover {
+    border-color: var(--accent-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ========================================
+   TABS - Glass Effect
+   ======================================== */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background: transparent;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    color: var(--text-secondary);
+    transition: all 0.3s ease;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+/* ========================================
+   ANIMAÇÕES SUAVES
+   ======================================== */
+* {
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
