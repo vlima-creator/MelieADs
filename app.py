@@ -652,17 +652,17 @@ def render_pareto_chart(df):
             hovertemplate="<b>%{text}</b><extra></extra>"
         ))
     
-    # Linha de Vendas (roxa)
+    # Linha de Vendas (verde militar claro)
     fig.add_trace(go.Scatter(
             x=x_values,
             y=vendas_values,
             name="Vendas",
-            line=dict(color="#9b59b6", width=2),
+            line=dict(color="#6B8E23", width=2),
             mode="lines+markers",
             yaxis="y2",
             text=[f"{int(v)}" for v in vendas_values],
             textposition="bottom center",
-            textfont=dict(size=9, color="#9b59b6"),
+            textfont=dict(size=9, color="#6B8E23"),
             hovertemplate="<b>%{text} vendas</b><extra></extra>"
         ))
     
@@ -693,7 +693,7 @@ def render_pareto_chart(df):
             side="right",
             showgrid=False,
             color="#666666",
-            tickfont=dict(color="#9b59b6")
+            tickfont=dict(color="#6B8E23")
         ),
         plot_bgcolor="#0a0a0a",
         paper_bgcolor="#0a0a0a",
@@ -728,12 +728,12 @@ def render_treemap_chart(df):
     df_plot["ROAS_Real"] = pd.to_numeric(df_plot.get("ROAS_Real", 0), errors="coerce").fillna(0)
     df_plot["Quadrante"] = df_plot.get("Quadrante", "SEM_CLASSIFICACAO")
     
-    # Escala de cores customizada (vermelho -> amarelo -> verde)
+    # Escala de cores customizada (vermelho -> verde militar -> verde)
     custom_colorscale = [
         [0, "#f53d3d"],      # Vermelho (ROAS baixo)
         [0.3, "#ff9800"],    # Laranja
-        [0.5, "#556B2F"],    # Amarelo
-        [0.7, "#8bc34a"],    # Verde claro
+        [0.5, "#556B2F"],    # Verde Militar
+        [0.7, "#6B8E23"],    # Verde Militar Claro
         [1, "#00a650"]       # Verde (ROAS alto)
     ]
     
@@ -776,7 +776,7 @@ def render_treemap_chart(df):
     st.plotly_chart(fig, use_container_width=True)
 
 def render_custom_header():
-    """Renderiza o header customizado com logo e barra amarela."""
+    """Renderiza o header customizado com logo e barra verde militar."""
     header_html = """
     <div style="
         background: linear-gradient(180deg, #556B2F 0%, #556B2F 4px, transparent 4px);
@@ -866,8 +866,8 @@ def render_funnel_chart(data: dict, title: str = "Funil Geral"):
     if not data:
         return
     
-    # Cores do funil (amarelo com gradiente)
-    colors = ["#556B2F", "#f0d800", "#e0ca00", "#d0bc00", "#c0ae00", "#b0a000", "#a09200"]
+    # Cores do funil (verde militar com gradiente)
+    colors = ["#556B2F", "#6B8E23", "#7a9d2a", "#89ac31", "#98bb38", "#a7ca3f", "#b6d946"]
     
     funnel_items = []
     max_value = max(data.values()) if data.values() else 1
