@@ -594,42 +594,101 @@ def format_table_br(df: pd.DataFrame) -> pd.DataFrame:
 # App
 # -------------------------
 def render_pareto_chart(df):
-    """Gera um gráfico de Pareto para a Receita das Campanhas."""
-    if df is None or df.empty or "Receita" not in df.columns:
+    """Gera um gráfico de Linha do Tempo estilizado para Investimento e Vendas."""
+    if df is None or df.empty:
         return
     
-    df_sorted = df.sort_values("Receita", ascending=False).copy()
-    df_sorted["Receita_Cum_Pct"] = 100 * df_sorted["Receita"].cumsum() / df_sorted["Receita"].sum()
+    # Preparar dados - usar as campanhas ordenadas por investimento
+    df_sorted = df.sort_values("Investimento", ascending=True).copy() if "Investimento" in df.columns else df.copy()
+    
+    # Criar índices para simular timeline
+    df_sorted = df_sorted.reset_index(drop=True)
+    df_sorted["idx"] = range(len(df_sorted))
     
     fig = go.Figure()
     
-    # Barras de Receita
-    fig.add_trace(go.Bar(
-        x=df_sorted["Nome"],
-        y=df_sorted["Receita"],
-        name="Receita",
-        marker_color="#3483fa"
-    ))
+    # Linha de Investimento (amarela)
+    if "Investimento" in df_sorted.columns:
+        invest_values = pd.to_numeric(df_sorted["Investimento"], errors="coerce").fillna(0)
+        fig.add_trace(go.Scatter(
+            x=df_sorted["idx"],
+            y=invest_values,
+            name="Valor Gasto",
+            line=dict(color="#ffe600", width=3),
+            mode="lines+markers",
+            fill="tozeroy",
+            fillcolor="rgba(255, 230, 0, 0.1)",
+            text=[f"R$ {v:,.2f}" for v in invest_values],
+            textposition="top center",
+            textfont=dict(size=9, color="#ffe600"),
+            hovertemplate="<b>%{text}</b><extra></extra>"
+        ))
     
-    # Linha de Percentual Acumulado
-    fig.add_trace(go.Scatter(
-        x=df_sorted["Nome"],
-        y=df_sorted["Receita_Cum_Pct"],
-        name="% Acumulado",
-        yaxis="y2",
-        line=dict(color="#ffe600", width=3),
-        mode="lines+markers"
-    ))
+    # Linha de Vendas (roxa)
+    if "Qtd_Vendas" in df_sorted.columns:
+        vendas_values = pd.to_numeric(df_sorted["Qtd_Vendas"], errors="coerce").fillna(0)
+        fig.add_trace(go.Scatter(
+            x=df_sorted["idx"],
+            y=vendas_values,
+            name="Vendas",
+            line=dict(color="#9b59b6", width=2),
+            mode="lines+markers",
+            yaxis="y2",
+            text=[f"{int(v)}" for v in vendas_values],
+            textposition="bottom center",
+            textfont=dict(size=9, color="#9b59b6"),
+            hovertemplate="<b>%{text} vendas</b><extra></extra>"
+        ))
     
     fig.update_layout(
-        title="Análise de Pareto: Receita por Campanha",
-        xaxis=dict(title="Campanha", showticklabels=False),
-        yaxis=dict(title="Receita (R$)"),
-        yaxis2=dict(title="% Acumulado", overlaying="y", side="right", range=[0, 110]),
-        template="plotly_dark",
-        margin=dict(l=20, r=20, t=40, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        title=dict(
+            text="<b><i>Linha do Tempo</i></b>",
+            font=dict(size=16, color="#ffe600"),
+            x=0
+        ),
+        xaxis=dict(
+            title="",
+            showgrid=False,
+            color="#666666",
+            tickfont=dict(color="#666666"),
+            showticklabels=False
+        ),
+        yaxis=dict(
+            title="",
+            showgrid=True,
+            gridcolor="#2a2a2a",
+            color="#666666",
+            tickfont=dict(color="#666666"),
+            tickformat=",.0f"
+        ),
+        yaxis2=dict(
+            title="",
+            overlaying="y",
+            side="right",
+            showgrid=False,
+            color="#666666",
+            tickfont=dict(color="#9b59b6")
+        ),
+        plot_bgcolor="#0a0a0a",
+        paper_bgcolor="#0a0a0a",
+        font=dict(color="#ffffff"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            font=dict(color="#ffffff", size=11)
+        ),
+        margin=dict(l=50, r=50, t=60, b=40),
+        hovermode="x unified",
+        hoverlabel=dict(
+            bgcolor="#1a1a1a",
+            font_size=12,
+            font_color="#ffffff"
+        )
     )
+    
     st.plotly_chart(fig, use_container_width=True)
 
 def render_treemap_chart(df):
@@ -643,28 +702,266 @@ def render_treemap_chart(df):
     df_plot["ROAS_Real"] = pd.to_numeric(df_plot.get("ROAS_Real", 0), errors="coerce").fillna(0)
     df_plot["Quadrante"] = df_plot.get("Quadrante", "SEM_CLASSIFICACAO")
     
+    # Escala de cores customizada (vermelho -> amarelo -> verde)
+    custom_colorscale = [
+        [0, "#f53d3d"],      # Vermelho (ROAS baixo)
+        [0.3, "#ff9800"],    # Laranja
+        [0.5, "#ffe600"],    # Amarelo
+        [0.7, "#8bc34a"],    # Verde claro
+        [1, "#00a650"]       # Verde (ROAS alto)
+    ]
+    
     # Criar figura com Treemap usando path e values
     fig = px.treemap(
         df_plot,
         path=["Quadrante", "Nome"],
         values="Investimento",
         color="ROAS_Real",
-        color_continuous_scale="RdYlGn",
-        title="Alocacao de Investimento por Campanha (Tamanho = Investimento, Cor = ROAS)",
-        template="plotly_dark",
+        color_continuous_scale=custom_colorscale,
         color_continuous_midpoint=5,
-        hover_name="Nome"
+        hover_name="Nome",
+        hover_data={"Investimento": ":,.2f", "ROAS_Real": ":.2f"}
     )
     
-    fig.update_traces(textposition="middle center", textfont_size=10)
+    fig.update_traces(
+        textposition="middle center",
+        textfont_size=11,
+        textfont_color="#ffffff",
+        marker=dict(line=dict(width=2, color="#0a0a0a")),
+        hovertemplate="<b>%{label}</b><br>Investimento: R$ %{value:,.2f}<br>ROAS: %{color:.2f}x<extra></extra>"
+    )
+    
     fig.update_layout(
-        margin=dict(l=20, r=20, t=40, b=20),
-        coloraxis_colorbar=dict(title="ROAS")
+        title=dict(
+            text="<b>Alocação de Investimento por Campanha</b>",
+            font=dict(size=14, color="#ffffff"),
+            x=0
+        ),
+        margin=dict(l=10, r=10, t=50, b=10),
+        paper_bgcolor="#0a0a0a",
+        plot_bgcolor="#0a0a0a",
+        coloraxis_colorbar=dict(
+            title=dict(text="ROAS", font=dict(color="#ffffff")),
+            tickfont=dict(color="#ffffff"),
+            bgcolor="#141414",
+            bordercolor="#2a2a2a"
+        )
     )
     st.plotly_chart(fig, use_container_width=True)
 
+def render_custom_header():
+    """Renderiza o header customizado com logo e barra amarela."""
+    header_html = """
+    <div style="
+        background: linear-gradient(180deg, #ffe600 0%, #ffe600 4px, transparent 4px);
+        padding: 20px 0 10px 0;
+        margin-bottom: 20px;
+    ">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="
+                width: 50px;
+                height: 50px;
+                background: linear-gradient(135deg, #ffe600 0%, #d4c200 100%);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 24px;
+            ">📊</div>
+            <div>
+                <h1 style="
+                    margin: 0;
+                    font-size: 1.8rem;
+                    font-weight: 700;
+                    color: #ffffff;
+                ">Dashboard <span style="color: #a0a0a0; font-weight: 400;">| Geral</span></h1>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(header_html, unsafe_allow_html=True)
+
+
+def render_kpi_card(icon: str, title: str, subtitle: str, value: str, icon_color: str = "#ffe600"):
+    """Renderiza um card de KPI customizado no estilo dos prints."""
+    card_html = f"""
+    <div style="
+        background: linear-gradient(145deg, #141414 0%, #1a1a1a 100%);
+        border-radius: 16px;
+        padding: 20px;
+        border: 1px solid rgba(255, 230, 0, 0.2);
+        position: relative;
+        min-height: 120px;
+    ">
+        <div style="
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 30px;
+            height: 30px;
+            border-top: 2px solid #ffe600;
+            border-right: 2px solid #ffe600;
+            border-top-right-radius: 16px;
+        "></div>
+        <div style="
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 30px;
+            height: 30px;
+            border-bottom: 2px solid #ffe600;
+            border-left: 2px solid #ffe600;
+            border-bottom-left-radius: 16px;
+        "></div>
+        <div style="color: #ffffff; font-size: 1rem; font-weight: 600; margin-bottom: 15px;">{title}</div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="
+                width: 40px;
+                height: 40px;
+                background: {icon_color};
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+            ">{icon}</div>
+            <div>
+                <div style="color: #a0a0a0; font-size: 0.75rem; text-transform: uppercase;">{subtitle}</div>
+                <div style="color: #ffffff; font-size: 1.5rem; font-weight: 700;">{value}</div>
+            </div>
+        </div>
+    </div>
+    """
+    return card_html
+
+
+def render_funnel_chart(data: dict, title: str = "Funil Geral"):
+    """Renderiza um funil dinâmico no estilo dos prints."""
+    if not data:
+        return
+    
+    # Cores do funil (amarelo com gradiente)
+    colors = ["#ffe600", "#f0d800", "#e0ca00", "#d0bc00", "#c0ae00", "#b0a000", "#a09200"]
+    
+    funnel_items = []
+    max_value = max(data.values()) if data.values() else 1
+    
+    for i, (label, value) in enumerate(data.items()):
+        width_pct = max(30, (value / max_value) * 100)
+        color = colors[i % len(colors)]
+        
+        funnel_items.append(f"""
+        <div style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+        ">
+            <div style="
+                background: {color};
+                color: #000000;
+                padding: 12px 20px;
+                border-radius: 8px;
+                text-align: center;
+                width: {width_pct}%;
+                min-width: 120px;
+                font-weight: 600;
+                box-shadow: 0 4px 10px rgba(255, 230, 0, 0.2);
+            ">
+                <div style="font-size: 0.7rem; text-transform: uppercase;">{label}</div>
+                <div style="font-size: 1.2rem;">{value:,.0f}</div>
+            </div>
+        </div>
+        """)
+    
+    funnel_html = f"""
+    <div style="
+        background: #141414;
+        border-radius: 16px;
+        padding: 20px;
+        border: 1px solid rgba(255, 230, 0, 0.2);
+    ">
+        <div style="
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        ">
+            <div style="
+                width: 30px;
+                height: 30px;
+                background: #ffe600;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            ">🔻</div>
+            <span style="color: #ffffff; font-weight: 600;">{title}</span>
+        </div>
+        {''.join(funnel_items)}
+    </div>
+    """
+    st.markdown(funnel_html, unsafe_allow_html=True)
+
+
+def render_timeline_chart(df, date_col: str, value_cols: list, title: str = "Linha do Tempo"):
+    """Renderiza um gráfico de linha do tempo no estilo dos prints."""
+    if df is None or df.empty:
+        return
+    
+    fig = go.Figure()
+    
+    colors = ["#ffe600", "#9b59b6", "#3498db", "#00a650"]
+    
+    for i, col in enumerate(value_cols):
+        if col in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df[date_col] if date_col in df.columns else df.index,
+                y=df[col],
+                name=col,
+                line=dict(color=colors[i % len(colors)], width=3),
+                mode="lines+markers+text",
+                text=df[col].apply(lambda x: f"R$ {x:,.2f}" if x > 100 else f"{x:,.0f}"),
+                textposition="top center",
+                textfont=dict(size=10, color=colors[i % len(colors)])
+            ))
+    
+    fig.update_layout(
+        title=dict(
+            text=f"<b style='color:#ffe600;font-style:italic;'>{title}</b>",
+            font=dict(size=16, color="#ffe600")
+        ),
+        xaxis=dict(
+            showgrid=False,
+            color="#666666",
+            tickfont=dict(color="#666666")
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="#2a2a2a",
+            color="#666666",
+            tickfont=dict(color="#666666")
+        ),
+        plot_bgcolor="#0a0a0a",
+        paper_bgcolor="#0a0a0a",
+        font=dict(color="#ffffff"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            font=dict(color="#ffffff")
+        ),
+        margin=dict(l=20, r=20, t=60, b=40),
+        hovermode="x unified"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def main():
-    st.set_page_config(page_title="Mercado Livre Ads", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="Dashboard | Geral", layout="wide", initial_sidebar_state="expanded")
 
     # Carregar CSS customizado
     try:
@@ -673,7 +970,8 @@ def main():
     except FileNotFoundError:
         st.warning("Arquivo de estilo não encontrado. O dashboard será exibido com o tema padrão.")
 
-    st.title("📊 Mercado Livre Ads - Dashboard e Relatório")
+    # Header customizado
+    render_custom_header()
 
     with st.sidebar:
         st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -902,64 +1200,130 @@ def main():
     st.divider()
     
     # -------------------------
-    # KPIs
+    # KPIs - Cards Premium
     # -------------------------
-    st.header("Indicadores Chave de Performance (KPIs)")
-    cols = st.columns(4)
-
     invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
     receita_ads = float(kpis.get("Receita Ads (R$)", 0))
     roas_val = float(kpis.get("ROAS", 0))
     tacos_val = float(kpis.get("TACOS", 0))
     tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
-
-    cols[0].metric("💰 Investimento Ads", fmt_money_br(invest_ads))
-    cols[1].metric("📈 Receita Ads", fmt_money_br(receita_ads))
     
-    # ROAS com cor dinâmica
-    roas_label = "Bom" if roas_val >= 5 else "Abaixo da meta"
-    cols[2].metric(
-        "🎯 ROAS", 
-        fmt_number_br(roas_val, 2), 
-        delta=roas_label, 
-        delta_color="normal" if roas_val >= 5 else "inverse"
-    )
-
-    # TACOS com cor dinâmica
-    if tacos_pct <= 3:
-        tacos_label = "Excelente"
-        tacos_color = "normal"
-    elif tacos_pct <= 5:
-        tacos_label = "Bom"
-        tacos_color = "normal"
-    elif tacos_pct <= 7:
-        tacos_label = "Alto"
-        tacos_color = "inverse"
-    else:
-        tacos_label = "Muito Alto"
-        tacos_color = "inverse"
+    # Calcular métricas adicionais
+    qtd_campanhas = len(camp_strat) if camp_strat is not None else 0
+    qtd_vendas = int(camp_strat["Qtd_Vendas"].sum()) if camp_strat is not None and "Qtd_Vendas" in camp_strat.columns else 0
     
-    cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
+    # Linha 1: Investimento, Resultado, Retorno
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown(render_kpi_card(
+            icon="💰",
+            title="Investimento",
+            subtitle="Valor Gasto",
+            value=fmt_money_br(invest_ads),
+            icon_color="#ffe600"
+        ), unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(render_kpi_card(
+            icon="🛢️",
+            title="Resultado",
+            subtitle="Vendas",
+            value=fmt_int_br(qtd_vendas),
+            icon_color="#ffe600"
+        ), unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(render_kpi_card(
+            icon="💵",
+            title="Retorno",
+            subtitle="Valor de Receita",
+            value=fmt_money_br(receita_ads),
+            icon_color="#ffe600"
+        ), unsafe_allow_html=True)
+    
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+    
+    # Linha 2: ROAS, TACOS, Campanhas
+    col4, col5, col6 = st.columns(3)
+    
+    with col4:
+        st.markdown(render_kpi_card(
+            icon="🎯",
+            title="ROAS",
+            subtitle="Retorno sobre Investimento",
+            value=f"{fmt_number_br(roas_val, 2)}x",
+            icon_color="#ffe600"
+        ), unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown(render_kpi_card(
+            icon="📊",
+            title="TACOS",
+            subtitle="Custo sobre Receita",
+            value=fmt_percent_br(tacos_pct),
+            icon_color="#ffe600"
+        ), unsafe_allow_html=True)
+    
+    with col6:
+        st.markdown(render_kpi_card(
+            icon="📁",
+            title="Campanhas",
+            subtitle="Total Ativas",
+            value=fmt_int_br(qtd_campanhas),
+            icon_color="#ffe600"
+        ), unsafe_allow_html=True)
 
     st.divider()
 
     # -------------------------
-    # Gráficos de Análise
+    # Gráficos de Análise - Layout com Funil
     # -------------------------
-    st.header("Análise Visual de Performance")
-    col_g1, col_g2 = st.columns(2)
+    col_charts, col_funnel = st.columns([2, 1])
     
-    with col_g1:
-        render_pareto_chart(camp_strat)
+    with col_charts:
+        # Gráfico de Linha do Tempo
+        if camp_strat is not None and not camp_strat.empty:
+            # Criar dados agregados para timeline (se houver dados de data)
+            render_pareto_chart(camp_strat)
     
-    with col_g2:
-        render_treemap_chart(camp_strat)
+    with col_funnel:
+        # Funil Dinâmico baseado nos quadrantes
+        if camp_strat is not None and not camp_strat.empty:
+            q_counts = camp_strat["Quadrante"].value_counts() if "Quadrante" in camp_strat.columns else pd.Series()
+            
+            funnel_data = {
+                "Total Campanhas": qtd_campanhas,
+                "Escala": int(q_counts.get("ESCALA", 0) + q_counts.get("ESCALA_ORCAMENTO", 0)),
+                "Estável": int(q_counts.get("ESTAVEL", 0)),
+                "Competitividade": int(q_counts.get("COMPETITIVIDADE", 0)),
+                "Hemorragia": int(q_counts.get("HEMORRAGIA", 0)),
+            }
+            render_funnel_chart(funnel_data, "Funil de Campanhas")
+
+    st.divider()
+    
+    # Treemap abaixo
+    st.subheader("Alocação de Investimento")
+    render_treemap_chart(camp_strat)
 
     st.divider()
 
     # -------------------------
+    # Visão Geral - Tabela estilizada
+    # -------------------------
+    st.markdown("""
+    <div style="
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    ">
+        <span style="color: #ffe600; font-size: 1.2rem; font-weight: 600; font-style: italic;">Visão Geral</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Painel geral
-    # -------------------------
     with st.expander("Painel Geral de Campanhas", expanded=True):
         panel_raw = ml.build_control_panel(camp_strat)
         panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
