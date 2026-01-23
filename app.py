@@ -1301,116 +1301,118 @@ def main():
                     st.dataframe(format_table_br(ads_view), use_container_width=True)
 
     # -------------------------
-    # Plano de Ação 15 Dias
+    # Plano de Ação 15 Dias (Mercado Livre)
     # -------------------------
-    st.header("📅 Plano de Ação Estratégico (15 Dias)")
-    st.info("Este plano respeita a janela de 7 dias do algoritmo do Mercado Livre. Não faça alterações nas mesmas campanhas em intervalos menores que uma semana.")
-    
-    plan15 = ml.build_15_day_plan(camp_strat)
-    if not plan15.empty:
-        # Estilização básica para o plano
-        def color_fase(val):
+    if selected_marketplace == "mercado_livre":
+        st.header("📅 Plano de Ação Estratégico (15 Dias)")
+        st.info("Este plano respeita a janela de 7 dias do algoritmo do Mercado Livre. Não faça alterações nas mesmas campanhas em intervalos menores que uma semana.")
+        
+        plan15 = ml.build_15_day_plan(camp_strat)
+        if not plan15.empty:
+            # Estilização básica para o plano
+            def color_fase(val):
                 if "Semana 1" in str(val): return "color: #3483fa; font-weight: bold"
                 if "Semana 2" in str(val): return "color: #ffe600; font-weight: bold"
                 return ""
         
-        st.dataframe(
-                plan15.style.applymap(color_fase, subset=["Fase"]),
-                use_container_width=True,
-                hide_index=True
-        )
-    else:
-        st.write("Nenhuma ação necessária para o período atual.")
+            st.dataframe(
+                    plan15.style.applymap(color_fase, subset=["Fase"]),
+                    use_container_width=True,
+                    hide_index=True
+            )
+        else:
+            st.write("Nenhuma ação necessária para o período atual.")
 
-    st.divider()
+        st.divider()
 
     # -------------------------
-    # Restante do dashboard (com os mesmos ajustes)
+    # Ações Recomendadas (Mercado Livre)
     # -------------------------
-    pause_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(pause_disp), drop_cpi_cols=True, drop_roas_generic=False)
-    pause_fmt = format_table_br(pause_view)
-    enter_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(enter_disp), drop_cpi_cols=True, drop_roas_generic=False)
-    enter_fmt = format_table_br(enter_view)
-    scale_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(scale_disp), drop_cpi_cols=True, drop_roas_generic=False)
-    scale_fmt = format_table_br(scale_view)
-    acos_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(acos_disp), drop_cpi_cols=True, drop_roas_generic=False)
-    acos_fmt = format_table_br(acos_view)
+    if selected_marketplace == "mercado_livre":
+        pause_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(pause_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        pause_fmt = format_table_br(pause_view)
+        enter_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(enter_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        enter_fmt = format_table_br(enter_view)
+        scale_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(scale_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        scale_fmt = format_table_br(scale_view)
+        acos_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(acos_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        acos_fmt = format_table_br(acos_view)
 
-    st.header("📄 Ações Recomendadas por Categoria")
-    
-    tab_pausar, tab_entrar, tab_escalar, tab_roas = st.tabs([
-        "🛑 Pausar/Revisar", "✅ Entrar em Ads", "🚀 Escalar Orçamento", "⬇️ Baixar ROAS Objetivo"
+        st.header("📄 Ações Recomendadas por Categoria")
+        
+        tab_pausar, tab_entrar, tab_escalar, tab_roas = st.tabs([
+            "🛑 Pausar/Revisar", "✅ Entrar em Ads", "🚀 Escalar Orçamento", "⬇️ Baixar ROAS Objetivo"
     ])
 
-    with tab_pausar:
-        st.subheader("🛑 Campanhas para pausar ou revisar")
-        st.info("Campanhas com ROAS baixo ou investimento sem retorno.")
-        st.dataframe(pause_fmt, use_container_width=True)
-    
-    with tab_entrar:
-        st.subheader("▫️ Oportunidades para entrar em Ads")
-        st.info("Anúncios orgânicos com alta conversão que ainda não estão em Ads.")
-        st.dataframe(enter_fmt, use_container_width=True)
+        with tab_pausar:
+            st.subheader("🛑 Campanhas para pausar ou revisar")
+            st.info("Campanhas com ROAS baixo ou investimento sem retorno.")
+            st.dataframe(pause_fmt, use_container_width=True)
+        
+        with tab_entrar:
+            st.subheader("▫️ Oportunidades para entrar em Ads")
+            st.info("Anúncios orgânicos com alta conversão que ainda não estão em Ads.")
+            st.dataframe(enter_fmt, use_container_width=True)
 
-    with tab_escalar:
-        st.subheader("▫️ Campanhas para escalar orçamento")
-        st.info("Campanhas com ROAS forte que estão perdendo impressões por orçamento.")
-        st.dataframe(scale_fmt, use_container_width=True)
+        with tab_escalar:
+            st.subheader("▫️ Campanhas para escalar orçamento")
+            st.info("Campanhas com ROAS forte que estão perdendo impressões por orçamento.")
+            st.dataframe(scale_fmt, use_container_width=True)
 
-    with tab_roas:
-        st.subheader("▫️ Campanhas para baixar ROAS objetivo")
-        st.info("Campanhas competitivas que podem ganhar mais mercado reduzindo o ROAS alvo.")
-        st.dataframe(acos_fmt, use_container_width=True)
+        with tab_roas:
+            st.subheader("▫️ Campanhas para baixar ROAS objetivo")
+            st.info("Campanhas competitivas que podem ganhar mais mercado reduzindo o ROAS alvo.")
+            st.dataframe(acos_fmt, use_container_width=True)
 
-    # -------------------------
-    # Visão de Estoque (opcional)
-    # -------------------------
-    if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
-        with st.expander("📦 Visão de Estoque", expanded=False):
-            if not blocked_stock.empty:
-                st.subheader("Bloqueados por estoque (iriam para Ads, mas não têm quantidade mínima)")
-                st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
-            else:
-                st.write("Nenhum item foi bloqueado por estoque nas regras atuais.")
+        # -------------------------
+        # Visão de Estoque (opcional)
+        # -------------------------
+        if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
+            with st.expander("📦 Visão de Estoque", expanded=False):
+                if not blocked_stock.empty:
+                    st.subheader("Bloqueados por estoque (iriam para Ads, mas não têm quantidade mínima)")
+                    st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
+                else:
+                    st.write("Nenhum item foi bloqueado por estoque nas regras atuais.")
 
-            # Risco de ruptura dentro das ações
-            risco = pd.concat([pause_disp, scale_disp, acos_disp], ignore_index=True)
-            if "Estoque_Status" in risco.columns:
-                risco = risco[risco["Estoque_Status"].isin(["ZERADO", "CRITICO", "BAIXO"])].copy()
-            if not risco.empty:
-                st.subheader("Risco de ruptura nas ações")
-                risco_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(risco), drop_cpi_cols=True, drop_roas_generic=False)
-                st.dataframe(format_table_br(risco_view), use_container_width=True)
-            else:
-                st.write("Sem alertas de estoque nas ações atuais.")
+                # Risco de ruptura dentro das ações
+                risco = pd.concat([pause_disp, scale_disp, acos_disp], ignore_index=True)
+                if "Estoque_Status" in risco.columns:
+                    risco = risco[risco["Estoque_Status"].isin(["ZERADO", "CRITICO", "BAIXO"])].copy()
+                if not risco.empty:
+                    st.subheader("Risco de ruptura nas ações")
+                    risco_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(risco), drop_cpi_cols=True, drop_roas_generic=False)
+                    st.dataframe(format_table_br(risco_view), use_container_width=True)
+                else:
+                    st.write("Sem alertas de estoque nas ações atuais.")
 
-    # -------------------------
-    # Download Excel
-    # Mantem dataframes originais para nao quebrar o gerar_excel do ml_report
-    # -------------------------
-    st.header("Download do Relatório Completo")
-    try:
-        excel_bytes = ml.gerar_excel(
-            kpis=kpis,
-            camp_agg=camp_agg,
-            pause=pause,
-            enter=enter,
-            scale=scale,
-            acos=acos,
-            camp_strat=camp_strat,
-            daily=None,
+        # -------------------------
+        # Download Excel (Mercado Livre)
+        # Mantem dataframes originais para nao quebrar o gerar_excel do ml_report
+        # -------------------------
+        st.header("Download do Relatório Completo")
+        try:
+            excel_bytes = ml.gerar_excel(
+                kpis=kpis,
+                camp_agg=camp_agg,
+                pause=pause,
+                enter=enter,
+                scale=scale,
+                acos=acos,
+                camp_strat=camp_strat,
+                daily=None,
         )
 
-        st.download_button(
-            "Baixar Excel do relatório",
-            data=excel_bytes,
-            file_name="relatorio_meli_ads.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    except Exception as e:
-        st.error("Não consegui gerar o Excel.")
-        st.exception(e)
+            st.download_button(
+                "Baixar Excel do relatório",
+                data=excel_bytes,
+                file_name="relatorio_meli_ads.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error("Não consegui gerar o Excel.")
+            st.exception(e)
 
 
     st.divider()
