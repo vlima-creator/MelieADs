@@ -8,6 +8,8 @@ import re
 import ml_report as ml
 import os
 import liquid_glass_components as lgc
+import marketplace_config as mkt
+import shopee_report as shopee
 
 
 # -------------------------
@@ -674,33 +676,94 @@ def main():
     except FileNotFoundError:
         st.warning("Arquivo de estilo não encontrado. O dashboard será exibido com o tema padrão.")
 
-    st.title("📈 Mercado Livre Ads - Dashboard")
-
+    # Seletor de Marketplace
     with st.sidebar:
-        st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        st.divider()
-
-        st.subheader("Arquivos")
-        organico_file = st.file_uploader("Relatorio de Desempenho de Anúncios (Excel)", type=["xlsx"])
-        patrocinados_file = st.file_uploader("Relatorio Anuncios Patrocinados (Excel)", type=["xlsx"])
-        campanhas_file = st.file_uploader("Relatorio de Campanha (Excel)", type=["xlsx"])
+        st.markdown("### 🏪 Selecionar Marketplace")
+        
+        marketplace_options = mkt.get_marketplace_list()
+        marketplace_labels = [f"{icon} {name}" for _, name, icon in marketplace_options]
+        marketplace_keys = [key for key, _, _ in marketplace_options]
+        
+        selected_marketplace = st.selectbox(
+            "Canal de Vendas",
+            options=marketplace_keys,
+            format_func=lambda x: f"{mkt.get_marketplace_config(x)['icon']} {mkt.get_marketplace_config(x)['name']}",
+            index=0,
+            label_visibility="collapsed"
+        )
+        
+        marketplace_config = mkt.get_marketplace_config(selected_marketplace)
         
         st.divider()
-        st.subheader("Comparativo (Opcional)")
-        snapshot_file = st.file_uploader("Snapshot de Referencia (Excel)", type=["xlsx"], help="Arquivo gerado ha 15 dias para comparar evolucao (Snapshot v2)")
+        st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         st.divider()
-        st.subheader("Estoque (Opcional)")
-        usar_estoque = st.checkbox("Ativar visão de estoque", value=False)
-        estoque_file = st.file_uploader("Arquivo de estoque (Excel)", type=["xlsx"], disabled=not usar_estoque)
-        if usar_estoque:
-            cA, cB, cC = st.columns(3)
-            with cA:
-                estoque_min_ads = st.number_input("Mínimo p/ entrar em Ads (un)", min_value=0, value=6, step=1)
-            with cB:
-                estoque_baixo = st.number_input("Estoque baixo (un)", min_value=0, value=6, step=1)
-            with cC:
-                estoque_critico = st.number_input("Estoque crítico (un)", min_value=0, value=2, step=1)
-            tratar_estoque_vazio_como_zero = st.checkbox("Tratar estoque ausente como zero", value=False)
+    
+    # Título dinâmico baseado no marketplace
+    st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
+
+    with st.sidebar:
+
+        st.subheader("📁 Arquivos Obrigatórios")
+        
+        # Upload dinâmico baseado no marketplace
+        uploaded_files = {}
+        
+        if selected_marketplace == "mercado_livre":
+            organico_file = st.file_uploader("Relatorio de Desempenho de Anúncios (Excel)", type=["xlsx"])
+            patrocinados_file = st.file_uploader("Relatorio Anuncios Patrocinados (Excel)", type=["xlsx"])
+            campanhas_file = st.file_uploader("Relatorio de Campanha (Excel)", type=["xlsx"])
+            uploaded_files = {
+                "vendas": organico_file,
+                "patrocinados": patrocinados_file,
+                "campanha": campanhas_file
+            }
+        elif selected_marketplace == "shopee":
+            dados_gerais_file = st.file_uploader(
+                "Dados Gerais de Anúncios (CSV)",
+                type=["csv"],
+                help="Relatório de Todos os Anúncios CPC da Shopee"
+            )
+            uploaded_files = {
+                "dados_gerais": dados_gerais_file
+            }
+        
+        st.divider()
+        st.subheader("📂 Arquivos Opcionais")
+        
+        if selected_marketplace == "mercado_livre":
+            snapshot_file = st.file_uploader(
+                "Snapshot de Referencia (Excel)",
+                type=["xlsx"],
+                help="Arquivo gerado ha 15 dias para comparar evolucao (Snapshot v2)"
+            )
+            uploaded_files["snapshot"] = snapshot_file
+            
+            usar_estoque = st.checkbox("Ativar visão de estoque", value=False)
+            estoque_file = st.file_uploader("Arquivo de estoque (Excel)", type=["xlsx"], disabled=not usar_estoque)
+            uploaded_files["estoque"] = estoque_file if usar_estoque else None
+            
+            if usar_estoque:
+                cA, cB, cC = st.columns(3)
+                with cA:
+                    estoque_min_ads = st.number_input("Mínimo p/ entrar em Ads (un)", min_value=0, value=6, step=1)
+                with cB:
+                    estoque_baixo = st.number_input("Estoque baixo (un)", min_value=0, value=6, step=1)
+                with cC:
+                    estoque_critico = st.number_input("Estoque crítico (un)", min_value=0, value=2, step=1)
+                tratar_estoque_vazio_como_zero = st.checkbox("Tratar estoque ausente como zero", value=False)
+            else:
+                estoque_min_ads = 6
+                estoque_baixo = 6
+                estoque_critico = 2
+                tratar_estoque_vazio_como_zero = False
+                
+        elif selected_marketplace == "shopee":
+            palavras_chave_file = st.file_uploader(
+                "Relatório de Palavras-chave (CSV)",
+                type=["csv"],
+                help="Relatório de Anúncio + Palavra-chave + Locação (opcional)"
+            )
+            uploaded_files["palavras_chave"] = palavras_chave_file
 
         st.divider()
         st.subheader("Filtros de regra")
@@ -752,23 +815,32 @@ def main():
         st.divider()
         baixar_snapshot_auto = st.checkbox("Baixar Snapshot V2 automaticamente", value=True)
 
-    if not (organico_file and patrocinados_file and campanhas_file):
-        st.info("Envie os 3 arquivos na barra lateral para liberar o relatório.")
-        return
+    # Validação de arquivos obrigatórios baseada no marketplace
+    if selected_marketplace == "mercado_livre":
+        if not (uploaded_files.get("vendas") and uploaded_files.get("patrocinados") and uploaded_files.get("campanha")):
+            st.info("📄 Envie os 3 arquivos obrigatórios do Mercado Livre na barra lateral para gerar o relatório.")
+            return
+    elif selected_marketplace == "shopee":
+        if not uploaded_files.get("dados_gerais"):
+            st.info("📄 Envie o arquivo de Dados Gerais de Anúncios da Shopee na barra lateral para gerar o relatório.")
+            return
 
     if not executar:
         st.warning("Quando estiver pronto, clique em Gerar relatório.")
         return
 
     try:
-        org = ml.load_organico(organico_file)
-        pat = ml.load_patrocinados(patrocinados_file)
+        # Processamento condicional baseado no marketplace
+        if selected_marketplace == "mercado_livre":
+            # Processa arquivos do Mercado Livre
+            org = ml.load_organico(uploaded_files["vendas"])
+            pat = ml.load_patrocinados(uploaded_files["patrocinados"])
 
-        # Modo unico: consolidado
-        camp_raw = ml.load_campanhas_consolidado(campanhas_file)
-        camp_agg = ml.build_campaign_agg(camp_raw, modo="consolidado")
+            # Modo unico: consolidado
+            camp_raw = ml.load_campanhas_consolidado(uploaded_files["campanha"])
+            camp_agg = ml.build_campaign_agg(camp_raw, modo="consolidado")
 
-        kpis, pause, enter, scale, acos, camp_strat, ads_panel, ads_pausar, ads_vencedores, ads_otim_fotos, ads_otim_keywords, ads_otim_oferta = ml.build_tables(
+            kpis, pause, enter, scale, acos, camp_strat, ads_panel, ads_pausar, ads_vencedores, ads_otim_fotos, ads_otim_keywords, ads_otim_oferta = ml.build_tables(
             org=org,
             camp_agg=camp_agg,
             pat=pat,
@@ -780,16 +852,36 @@ def main():
             ads_min_clk=int(ads_min_clk) if ('ads_min_clk' in locals()) else 10,
             ads_ctr_min_abs=float(ads_ctr_min_abs) if ('ads_ctr_min_abs' in locals()) else 0.10,
             ads_cvr_min=float(ads_cvr_min) if ('ads_cvr_min' in locals()) else 0.80,
-            ads_pause_invest_min=float(ads_pause_invest_min) if ('ads_pause_invest_min' in locals()) else 20.0,
-        )
+                ads_pause_invest_min=float(ads_pause_invest_min) if ('ads_pause_invest_min' in locals()) else 20.0,
+            )
 
-        # -------------------------
-        # Snapshot V2 - Carregamento e Comparação
-        # -------------------------
-        camp_snap, anuncio_snap, kpis_snap = ml.load_snapshot_v2(snapshot_file)
+            # -------------------------
+            # Snapshot V2 - Carregamento e Comparação
+            # -------------------------
+            camp_snap, anuncio_snap, kpis_snap = ml.load_snapshot_v2(uploaded_files.get("snapshot"))
         
-        camp_strat_comp = ml.compare_snapshots_campanha(camp_strat, camp_snap)
-        ads_panel_comp = ml.compare_snapshots_anuncio(ads_panel, anuncio_snap)
+            camp_strat_comp = ml.compare_snapshots_campanha(camp_strat, camp_snap)
+            ads_panel_comp = ml.compare_snapshots_anuncio(ads_panel, anuncio_snap)
+            
+        elif selected_marketplace == "shopee":
+            # Processa arquivos da Shopee
+            resultado_shopee = shopee.processar_relatorio_shopee(
+                dados_gerais_file=uploaded_files["dados_gerais"],
+                palavras_chave_file=uploaded_files.get("palavras_chave")
+            )
+            
+            kpis = resultado_shopee["kpis"]
+            df_shopee_geral = resultado_shopee["df_geral"]
+            df_shopee_protecao = resultado_shopee["df_protecao"]
+            df_shopee_conversoes = resultado_shopee["df_conversoes"]
+            recomendacoes_shopee = resultado_shopee["recomendacoes"]
+            df_shopee_keywords = resultado_shopee.get("df_keywords", None)
+            
+            # Variáveis de compatibilidade (para evitar erros no código existente)
+            camp_strat_comp = df_shopee_protecao
+            ads_panel_comp = df_shopee_conversoes
+            camp_snap = None
+            anuncio_snap = None
 
         # -------------------------
         # Snapshot V2 - Salvamento Automático
@@ -852,137 +944,335 @@ def main():
 
     
     # -------------------------
-    # KPIs - Liquid Glass Style
+    # KPIs - Liquid Glass Style (Dinâmico por Marketplace)
     # -------------------------
     lgc.render_glass_section_header(
         "Indicadores Chave de Performance",
         "Visão geral do desempenho das campanhas"
     )
 
-    invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
-    receita_ads = float(kpis.get("Receita Ads (R$)", 0))
-    roas_val = float(kpis.get("ROAS", 0))
-    tacos_val = float(kpis.get("TACOS", 0))
-    tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
+    if selected_marketplace == "mercado_livre":
+        invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
+        receita_ads = float(kpis.get("Receita Ads (R$)", 0))
+        roas_val = float(kpis.get("ROAS", 0))
+        tacos_val = float(kpis.get("TACOS", 0))
+        tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
 
-    # Renderiza KPIs com efeito Liquid Glass
-    lgc.render_glass_kpi_row([
-        {
-            "icon": "💵",
-            "label": "INVESTIMENTO ADS",
-            "value": fmt_money_br(invest_ads)
-        },
-        {
-            "icon": "💰",
-            "label": "RECEITA ADS",
-            "value": fmt_money_br(receita_ads)
-        },
-        {
-            "icon": "📉",
-            "label": "ROAS",
-            "value": f"{fmt_number_br(roas_val, 2)}x"
-        },
-        {
-            "icon": "🎯",
-            "label": "TACOS",
-            "value": fmt_percent_br(tacos_pct)
-        }
-    ])
+        # Renderiza KPIs do Mercado Livre
+        lgc.render_glass_kpi_row([
+            {
+                "icon": "💵",
+                "label": "INVESTIMENTO ADS",
+                "value": fmt_money_br(invest_ads)
+            },
+            {
+                "icon": "💰",
+                "label": "RECEITA ADS",
+                "value": fmt_money_br(receita_ads)
+            },
+            {
+                "icon": "📉",
+                "label": "ROAS",
+                "value": f"{fmt_number_br(roas_val, 2)}x"
+            },
+            {
+                "icon": "🎯",
+                "label": "TACOS",
+                "value": fmt_percent_br(tacos_pct)
+            }
+        ])
+        
+    elif selected_marketplace == "shopee":
+        gmv_total = float(kpis.get("GMV Total", 0))
+        despesas = float(kpis.get("Despesas", 0))
+        roas_medio = float(kpis.get("ROAS Médio", 0))
+        roas_direto = float(kpis.get("ROAS Direto Médio", 0))
+        credito_protecao = float(kpis.get("Crédito Proteção Total", 0))
+        campanhas_protegidas = int(kpis.get("Campanhas com Proteção", 0))
+        
+        # Renderiza KPIs da Shopee
+        lgc.render_glass_kpi_row([
+            {
+                "icon": "💰",
+                "label": "GMV TOTAL",
+                "value": fmt_money_br(gmv_total)
+            },
+            {
+                "icon": "💵",
+                "label": "DESPESAS",
+                "value": fmt_money_br(despesas)
+            },
+            {
+                "icon": "📈",
+                "label": "ROAS MÉDIO",
+                "value": f"{fmt_number_br(roas_medio, 2)}x"
+            },
+            {
+                "icon": "🎯",
+                "label": "ROAS DIRETO",
+                "value": f"{fmt_number_br(roas_direto, 2)}x"
+            },
+            {
+                "icon": "🛡️",
+                "label": "CRÉDITO PROTEÇÃO",
+                "value": fmt_money_br(credito_protecao)
+            },
+            {
+                "icon": "✅",
+                "label": "CAMPANHAS PROTEGIDAS",
+                "value": str(campanhas_protegidas)
+            }
+        ])
 
     st.divider()
 
     # -------------------------
-    # Gráficos de Análise
+    # Gráficos de Análise (Mercado Livre)
     # -------------------------
-    st.header("Análise Visual de Performance")
-    col_g1, col_g2 = st.columns(2)
+    if selected_marketplace == "mercado_livre":
+        st.header("Análise Visual de Performance")
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            render_pareto_chart(camp_strat)
+        
+        with col_g2:
+            render_treemap_chart(camp_strat)
+
+        st.divider()
     
-    with col_g1:
-        render_pareto_chart(camp_strat)
-    
-    with col_g2:
-        render_treemap_chart(camp_strat)
-
-    st.divider()
+    # -------------------------
+    # Análise Shopee - Proteção de ROAS e Conversões
+    # -------------------------
+    elif selected_marketplace == "shopee":
+        st.header("🛡️ Análise de Proteção de ROAS")
+        
+        # Estatísticas de Proteção
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Campanhas Elegíveis",
+                campanhas_protegidas,
+                help="Campanhas com taxa de cumprimento de ROAS < 90%"
+            )
+        
+        with col2:
+            taxa_media = df_shopee_protecao['Taxa Cumprimento ROAS (%)'].mean()
+            st.metric(
+                "Taxa Média Cumprimento",
+                f"{taxa_media:.1f}%",
+                help="Taxa média de cumprimento de ROAS de todas as campanhas"
+            )
+        
+        with col3:
+            conversoes_totais = int(kpis.get("Conversões", 0))
+            st.metric(
+                "Conversões Totais",
+                conversoes_totais
+            )
+        
+        with col4:
+            conversoes_diretas = int(kpis.get("Conversões Diretas", 0))
+            pct_diretas = (conversoes_diretas / conversoes_totais * 100) if conversoes_totais > 0 else 0
+            st.metric(
+                "Conversões Diretas",
+                conversoes_diretas,
+                delta=f"{pct_diretas:.1f}% do total"
+            )
+        
+        st.divider()
+        
+        # Tabela de Campanhas com Proteção
+        with st.expander("🛡️ Campanhas Elegíveis para Proteção de ROAS", expanded=True):
+            df_elegiveis = df_shopee_protecao[df_shopee_protecao['Elegível Proteção']].copy()
+            
+            if len(df_elegiveis) > 0:
+                # Seleciona colunas relevantes
+                colunas_exibir = [
+                    'Nome do Anúncio', 'Status', 'GMV', 'Despesas', 'ROAS',
+                    'ROAS Alvo', 'Taxa Cumprimento ROAS (%)', 'Crédito Potencial (R$)',
+                    'Status Proteção'
+                ]
+                colunas_disponiveis = [col for col in colunas_exibir if col in df_elegiveis.columns]
+                
+                st.dataframe(
+                    df_elegiveis[colunas_disponiveis],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                st.info(f"📊 Total de crédito potencial: **{fmt_money_br(credito_protecao)}**")
+            else:
+                st.success("✅ Nenhuma campanha elegível para proteção. Todas estão com ROAS acima de 90% da meta!")
+        
+        st.divider()
+        
+        # Análise de Conversões Diretas
+        with st.expander("🎯 Análise de Conversões Diretas vs Totais", expanded=False):
+            colunas_conversoes = [
+                'Nome do Anúncio', 'Conversões', 'Conversões Diretas',
+                '% Conversões Diretas', 'Qualidade Atribuição',
+                'GMV', 'Receita direta', 'ROAS', 'ROAS Direto'
+            ]
+            colunas_conv_disponiveis = [col for col in colunas_conversoes if col in df_shopee_conversoes.columns]
+            
+            st.dataframe(
+                df_shopee_conversoes[colunas_conv_disponiveis],
+                use_container_width=True,
+                hide_index=True
+            )
+        
+        st.divider()
+        
+        # Recomendações
+        st.header("💡 Recomendações Estratégicas")
+        
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🛡️ Ativar Proteção",
+            "🔧 Otimizar ROAS",
+            "🚀 Escalar GMV",
+            "⚠️ Pausar/Revisar"
+        ])
+        
+        with tab1:
+            if len(recomendacoes_shopee["ativar_protecao"]) > 0:
+                st.subheader("Campanhas para Ativar Proteção de ROAS")
+                for rec in recomendacoes_shopee["ativar_protecao"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - Despesas: {fmt_money_br(rec['despesas'])}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.info("✅ Nenhuma campanha precisa ativar proteção no momento.")
+        
+        with tab2:
+            if len(recomendacoes_shopee["otimizar_roas"]) > 0:
+                st.subheader("Campanhas para Otimizar ROAS")
+                for rec in recomendacoes_shopee["otimizar_roas"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - Conversões: {rec['conversoes']}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.info("✅ Nenhuma campanha precisa de otimização urgente.")
+        
+        with tab3:
+            if len(recomendacoes_shopee["escalar_gmv"]) > 0:
+                st.subheader("Oportunidades de Escalar GMV")
+                for rec in recomendacoes_shopee["escalar_gmv"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - GMV: {fmt_money_br(rec['gmv'])}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.info("🔍 Nenhuma oportunidade de escala identificada no momento.")
+        
+        with tab4:
+            if len(recomendacoes_shopee["pausar_revisar"]) > 0:
+                st.subheader("⚠️ Campanhas para Pausar ou Revisar")
+                for rec in recomendacoes_shopee["pausar_revisar"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - Despesas: {fmt_money_br(rec['despesas'])}
+                    - Conversões: {rec['conversoes']}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.success("✅ Nenhuma campanha precisa ser pausada.")
+        
+        st.divider()
 
     # -------------------------
-    # Painel geral
+    # Painel geral (Mercado Livre)
     # -------------------------
-    with st.expander("Painel Geral de Campanhas", expanded=True):
-        panel_raw = ml.build_control_panel(camp_strat)
-        panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
-        panel_view = prepare_df_for_view(panel_raw, drop_cpi_cols=True, drop_roas_generic=False)
-        st.dataframe(format_table_br(panel_view), use_container_width=True)
+    if selected_marketplace == "mercado_livre":
+        with st.expander("Painel Geral de Campanhas", expanded=True):
+            panel_raw = ml.build_control_panel(camp_strat)
+            panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
+            panel_view = prepare_df_for_view(panel_raw, drop_cpi_cols=True, drop_roas_generic=False)
+            st.dataframe(format_table_br(panel_view), use_container_width=True)
 
-    st.divider()
+        st.divider()
 
-    # -------------------------
-    # Matriz CPI
-    # -------------------------
-    with st.expander("Matriz CPI (Oportunidades de Otimização)", expanded=False):
-        cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
-        # Visao limpa (sem alterar calculos): esconder colunas auxiliares, remover duplicidades e alinhar ROAS/ACOS
-        cpi_view = prepare_df_for_view(cpi_raw, drop_cpi_cols=True, drop_roas_generic=True)
-        st.dataframe(format_table_br(cpi_view), use_container_width=True)
+        # -------------------------
+        # Matriz CPI
+        # -------------------------
+        with st.expander("Matriz CPI (Oportunidades de Otimização)", expanded=False):
+            cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
+            # Visao limpa (sem alterar calculos): esconder colunas auxiliares, remover duplicidades e alinhar ROAS/ACOS
+            cpi_view = prepare_df_for_view(cpi_raw, drop_cpi_cols=True, drop_roas_generic=True)
+            st.dataframe(format_table_br(cpi_view), use_container_width=True)
 
-    st.divider()
+        st.divider()
 
-    # -------------------------
-    # Nível de anúncio (Patrocinados)
-    # -------------------------
-    with st.expander("📄 Análise Tática por Anúncio (Ads)", expanded=False):
-        if ads_panel is None or (hasattr(ads_panel, "empty") and ads_panel.empty):
-            st.info("Sem dados de anúncios patrocinados para analisar.")
-        else:
-            # KPIs rápidos do bloco
-            total_ads = int(len(ads_panel))
-            n_pausar = int(len(ads_pausar)) if ads_pausar is not None else 0
-            n_vencedores = int(len(ads_vencedores)) if ads_vencedores is not None else 0
-            n_fotos = int(len(ads_otim_fotos)) if ads_otim_fotos is not None else 0
-            n_kw = int(len(ads_otim_keywords)) if ads_otim_keywords is not None else 0
-            n_oferta = int(len(ads_otim_oferta)) if ads_otim_oferta is not None else 0
+        # -------------------------
+        # Nível de anúncio (Patrocinados)
+        # -------------------------
+        with st.expander("📄 Análise Tática por Anúncio (Ads)", expanded=False):
+            if ads_panel is None or (hasattr(ads_panel, "empty") and ads_panel.empty):
+                st.info("Sem dados de anúncios patrocinados para analisar.")
+            else:
+                # KPIs rápidos do bloco
+                total_ads = int(len(ads_panel))
+                n_pausar = int(len(ads_pausar)) if ads_pausar is not None else 0
+                n_vencedores = int(len(ads_vencedores)) if ads_vencedores is not None else 0
+                n_fotos = int(len(ads_otim_fotos)) if ads_otim_fotos is not None else 0
+                n_kw = int(len(ads_otim_keywords)) if ads_otim_keywords is not None else 0
+                n_oferta = int(len(ads_otim_oferta)) if ads_otim_oferta is not None else 0
 
-            c1, c2, c3, c4, c5, c6 = st.columns(6)
-            c1.metric("Total Anúncios", total_ads)
-            c2.metric("🏆 Vencedores", n_vencedores)
-            c3.metric("🛑 Pausar", n_pausar)
-            c4.metric("📸 Fotos/Clips", n_fotos)
-            c5.metric("⌨️ Keywords", n_kw)
-            c6.metric("🏷️ Oferta", n_oferta)
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
+                c1.metric("Total Anúncios", total_ads)
+                c2.metric("🏆 Vencedores", n_vencedores)
+                c3.metric("🛑 Pausar", n_pausar)
+                c4.metric("📸 Fotos/Clips", n_fotos)
+                c5.metric("⌨️ Keywords", n_kw)
+                c6.metric("🏷️ Oferta", n_oferta)
 
-            st.divider()
+                st.divider()
 
-            tab_pausar, tab_vencedores, tab_otim, tab_completo = st.tabs([
-                "🛑 Pausar", "🏆 Vencedores", "🔧 Otimização", "📊 Painel Completo"
-            ])
+                tab_pausar, tab_vencedores, tab_otim, tab_completo = st.tabs([
+                    "🛑 Pausar", "🏆 Vencedores", "🔧 Otimização", "📊 Painel Completo"
+                ])
 
-            with tab_pausar:
-                st.subheader("Anúncios para pausar (refino de campanha)")
-                ads_pausar_view = prepare_df_for_view(ads_pausar, drop_cpi_cols=True, drop_roas_generic=False) if ads_pausar is not None else pd.DataFrame()
-                st.dataframe(format_table_br(ads_pausar_view), use_container_width=True)
+                with tab_pausar:
+                    st.subheader("Anúncios para pausar (refino de campanha)")
+                    ads_pausar_view = prepare_df_for_view(ads_pausar, drop_cpi_cols=True, drop_roas_generic=False) if ads_pausar is not None else pd.DataFrame()
+                    st.dataframe(format_table_br(ads_pausar_view), use_container_width=True)
 
-            with tab_vencedores:
-                st.subheader("Anúncios vencedores (preservar)")
-                ads_vencedores_view = prepare_df_for_view(ads_vencedores, drop_cpi_cols=True, drop_roas_generic=False) if ads_vencedores is not None else pd.DataFrame()
-                st.dataframe(format_table_br(ads_vencedores_view), use_container_width=True)
+                with tab_vencedores:
+                    st.subheader("Anúncios vencedores (preservar)")
+                    ads_vencedores_view = prepare_df_for_view(ads_vencedores, drop_cpi_cols=True, drop_roas_generic=False) if ads_vencedores is not None else pd.DataFrame()
+                    st.dataframe(format_table_br(ads_vencedores_view), use_container_width=True)
 
-            with tab_otim:
-                st.subheader("Anúncios para otimização")
-                t1, t2, t3 = st.tabs(["📸 Fotos e Clips", "⌨️ Palavras-chave", "🏷️ Oferta"])
-                with t1:
-                    v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
-                    st.dataframe(format_table_br(v), use_container_width=True)
-                with t2:
-                    v = prepare_df_for_view(ads_otim_keywords, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_keywords is not None else pd.DataFrame()
-                    st.dataframe(format_table_br(v), use_container_width=True)
-                with t3:
-                    v = prepare_df_for_view(ads_otim_oferta, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_oferta is not None else pd.DataFrame()
-                    st.dataframe(format_table_br(v), use_container_width=True)
+                with tab_otim:
+                    st.subheader("Anúncios para otimização")
+                    t1, t2, t3 = st.tabs(["📸 Fotos e Clips", "⌨️ Palavras-chave", "🏷️ Oferta"])
+                    with t1:
+                        v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
+                        st.dataframe(format_table_br(v), use_container_width=True)
+                    with t2:
+                        v = prepare_df_for_view(ads_otim_keywords, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_keywords is not None else pd.DataFrame()
+                        st.dataframe(format_table_br(v), use_container_width=True)
+                    with t3:
+                        v = prepare_df_for_view(ads_otim_oferta, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_oferta is not None else pd.DataFrame()
+                        st.dataframe(format_table_br(v), use_container_width=True)
 
-            with tab_completo:
-                st.subheader("Painel completo por anúncio")
-                ads_view = prepare_df_for_view(ads_panel, drop_cpi_cols=True, drop_roas_generic=False)
-                st.dataframe(format_table_br(ads_view), use_container_width=True)
+                with tab_completo:
+                    st.subheader("Painel completo por anúncio")
+                    ads_view = prepare_df_for_view(ads_panel, drop_cpi_cols=True, drop_roas_generic=False)
+                    st.dataframe(format_table_br(ads_view), use_container_width=True)
 
     # -------------------------
     # Plano de Ação 15 Dias
@@ -994,14 +1284,14 @@ def main():
     if not plan15.empty:
         # Estilização básica para o plano
         def color_fase(val):
-            if "Semana 1" in str(val): return "color: #3483fa; font-weight: bold"
-            if "Semana 2" in str(val): return "color: #ffe600; font-weight: bold"
-            return ""
+                if "Semana 1" in str(val): return "color: #3483fa; font-weight: bold"
+                if "Semana 2" in str(val): return "color: #ffe600; font-weight: bold"
+                return ""
         
         st.dataframe(
-            plan15.style.applymap(color_fase, subset=["Fase"]),
-            use_container_width=True,
-            hide_index=True
+                plan15.style.applymap(color_fase, subset=["Fase"]),
+                use_container_width=True,
+                hide_index=True
         )
     else:
         st.write("Nenhuma ação necessária para o período atual.")
