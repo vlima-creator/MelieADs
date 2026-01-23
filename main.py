@@ -603,21 +603,21 @@ def render_pareto_chart(df):
     
     fig = go.Figure()
     
-    # Barras de Receita (verde militar)
+    # Barras de Receita
     fig.add_trace(go.Bar(
         x=df_sorted["Nome"],
         y=df_sorted["Receita"],
         name="Receita",
-        marker_color="#556B2F"
+        marker_color="#3483fa"
     ))
     
-    # Linha de Percentual Acumulado (verde militar claro)
+    # Linha de Percentual Acumulado
     fig.add_trace(go.Scatter(
         x=df_sorted["Nome"],
         y=df_sorted["Receita_Cum_Pct"],
         name="% Acumulado",
         yaxis="y2",
-        line=dict(color="#6B8E23", width=3),
+        line=dict(color="#ffe600", width=3),
         mode="lines+markers"
     ))
     
@@ -627,9 +627,6 @@ def render_pareto_chart(df):
         yaxis=dict(title="Receita (R$)"),
         yaxis2=dict(title="% Acumulado", overlaying="y", side="right", range=[0, 110]),
         template="plotly_dark",
-        plot_bgcolor="#0a0a0a",
-        paper_bgcolor="#0a0a0a",
-        font=dict(color="#ffffff"),
         margin=dict(l=20, r=20, t=40, b=20),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
@@ -646,35 +643,23 @@ def render_treemap_chart(df):
     df_plot["ROAS_Real"] = pd.to_numeric(df_plot.get("ROAS_Real", 0), errors="coerce").fillna(0)
     df_plot["Quadrante"] = df_plot.get("Quadrante", "SEM_CLASSIFICACAO")
     
-    # Escala de cores customizada (vermelho -> verde militar -> verde)
-    custom_colorscale = [
-        [0, "#f53d3d"],
-        [0.3, "#ff9800"],
-        [0.5, "#556B2F"],
-        [0.7, "#6B8E23"],
-        [1, "#00a650"]
-    ]
-    
     # Criar figura com Treemap usando path e values
     fig = px.treemap(
         df_plot,
         path=["Quadrante", "Nome"],
         values="Investimento",
         color="ROAS_Real",
-        color_continuous_scale=custom_colorscale,
+        color_continuous_scale="RdYlGn",
         title="Alocacao de Investimento por Campanha (Tamanho = Investimento, Cor = ROAS)",
         template="plotly_dark",
         color_continuous_midpoint=5,
         hover_name="Nome"
     )
     
-    fig.update_traces(textposition="middle center", textfont_size=10, textfont_color="#ffffff")
+    fig.update_traces(textposition="middle center", textfont_size=10)
     fig.update_layout(
         margin=dict(l=20, r=20, t=40, b=20),
-        plot_bgcolor="#0a0a0a",
-        paper_bgcolor="#0a0a0a",
-        font=dict(color="#ffffff"),
-        coloraxis_colorbar=dict(title="ROAS", tickfont=dict(color="#ffffff"))
+        coloraxis_colorbar=dict(title="ROAS")
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -688,7 +673,7 @@ def main():
     except FileNotFoundError:
         st.warning("Arquivo de estilo não encontrado. O dashboard será exibido com o tema padrão.")
 
-    st.title("Mercado Livre Ads - Dashboard e Relatório")
+    st.title("📊 Mercado Livre Ads - Dashboard e Relatório")
 
     with st.sidebar:
         st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -750,8 +735,8 @@ def main():
         st.divider()
         st.subheader("Regras por anúncio (Ads)")
 
-        st.subheader("Ajustar regras de anúncio")
-        st.caption("Impressões, cliques e investimento são filtros de volume. CTR e CVR são referências médias de e-commerce, ajuste conforme seu nicho.")
+        with st.expander("Ajustar regras de anúncio", expanded=False):
+            st.caption("Impressões, cliques e investimento são filtros de volume. CTR e CVR são referências médias de e-commerce, ajuste conforme seu nicho.")
             ads_min_imp = st.number_input("Ads: impressões mín", min_value=0, value=500, step=100)
             ads_min_clk = st.number_input("Ads: cliques mín", min_value=0, value=10, step=5)
             ads_ctr_min_abs = st.number_input("Ads: CTR mín (%)  , referência 0,60%", min_value=0.0, value=0.60, step=0.05, format="%.2f")
@@ -821,7 +806,7 @@ def main():
                 # Como alternativa de "auto-download", exibimos ele com destaque no topo.
                 st.sidebar.success(f"Snapshot V2 preparado!")
                 st.sidebar.download_button(
-                    label=" CLIQUE AQUI PARA BAIXAR SNAPSHOT",
+                    label="📥 CLIQUE AQUI PARA BAIXAR SNAPSHOT",
                     data=open(snapshot_path, "rb").read(),
                     file_name=filename,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -865,7 +850,56 @@ def main():
 
     # -------------------------
     # Sumário Executivo
-    # Sumário Executivo removido conforme solicitação
+    # -------------------------
+    st.header("Sumário Executivo")
+    
+    # Geração do texto do sumário
+    def generate_executive_summary(kpis, camp_strat_comp, ads_panel_comp):
+        invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
+        receita_ads = float(kpis.get("Receita Ads (R$)", 0))
+        roas_val = float(kpis.get("ROAS", 0))
+        tacos_pct = float(kpis.get("TACOS", 0)) * 100
+        
+        # Análise de Quadrantes
+        q_counts = camp_strat_comp["Quadrante"].value_counts()
+        q_hemorragia = q_counts.get("HEMORRAGIA", 0)
+        q_escala = q_counts.get("ESCALA", 0)
+        
+        # Análise de Migração (Protegida contra colunas ausentes)
+        migracao_text = ""
+        if "Migracao_Quadrante" in camp_strat_comp.columns:
+            migracao_melhora = camp_strat_comp[camp_strat_comp["Migracao_Quadrante"].str.contains("HEMORRAGIA PARA ESTÁVEL|HEMORRAGIA PARA ESCALA|ESTÁVEL PARA ESCALA", na=False)].shape[0]
+            migracao_piora = camp_strat_comp[camp_strat_comp["Migracao_Quadrante"].str.contains("ESTÁVEL PARA HEMORRAGIA|ESCALA PARA HEMORRAGIA", na=False)].shape[0]
+            migracao_text = f"""
+        **Evolução (Comparativo com Snapshot):**
+        - **{migracao_melhora}** campanhas apresentaram melhora na classificação de quadrante (ex: saíram de Hemorragia).
+        - **{migracao_piora}** campanhas apresentaram piora na classificação, indicando a necessidade de revisão das ações tomadas.
+            """
+        
+        # Análise de Anúncios
+        ads_pausar = ads_panel_comp[ads_panel_comp["Acao_Anuncio"] == "Pausar anúncio"].shape[0] if "Acao_Anuncio" in ads_panel_comp.columns else 0
+        ads_vencedores = ads_panel_comp[ads_panel_comp["Status_Anuncio"] == "Vencedor"].shape[0] if "Status_Anuncio" in ads_panel_comp.columns else 0
+        
+        summary = f"""
+        A performance geral da sua conta de Mercado Livre Ads apresenta um **ROAS de {fmt_number_br(roas_val, 2)}x** e um **TACOS de {fmt_percent_br(tacos_pct)}**. 
+        
+        No total, foram investidos **{fmt_money_br(invest_ads)}** e gerados **{fmt_money_br(receita_ads)}** em receita direta de Ads.
+        
+        **Análise de Campanhas:**
+        - Atualmente, **{q_hemorragia}** campanhas estão classificadas como **HEMORRAGIA** (baixo ROAS), exigindo atenção imediata.
+        - **{q_escala}** campanhas estão prontas para **ESCALA** (ROAS forte com perda por orçamento).
+        {migracao_text}
+        **Análise Tática (Anúncios):**
+        - Foram identificados **{ads_vencedores}** anúncios vencedores que devem ser preservados.
+        - **{ads_pausar}** anúncios estão recomendados para pausa imediata por baixo desempenho e alto investimento.
+        
+        O plano de ação de 15 dias foca em resolver as campanhas em Hemorragia e maximizar o potencial das campanhas em Escala.
+        """
+        return summary
+    
+    st.markdown(generate_executive_summary(kpis, camp_strat_comp, ads_panel_comp))
+    
+    st.divider()
     
     # -------------------------
     # KPIs
@@ -879,13 +913,13 @@ def main():
     tacos_val = float(kpis.get("TACOS", 0))
     tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
 
-    cols[0].metric("Investimento Ads", fmt_money_br(invest_ads))
-    cols[1].metric("Receita Ads", fmt_money_br(receita_ads))
+    cols[0].metric("💰 Investimento Ads", fmt_money_br(invest_ads))
+    cols[1].metric("📈 Receita Ads", fmt_money_br(receita_ads))
     
     # ROAS com cor dinâmica
     roas_label = "Bom" if roas_val >= 5 else "Abaixo da meta"
     cols[2].metric(
-        "ROAS", 
+        "🎯 ROAS", 
         fmt_number_br(roas_val, 2), 
         delta=roas_label, 
         delta_color="normal" if roas_val >= 5 else "inverse"
@@ -905,60 +939,8 @@ def main():
         tacos_label = "Muito Alto"
         tacos_color = "inverse"
     
-    cols[3].metric("TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
+    cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
 
-    st.divider()
-
-    # -------------------------
-    # Funil de Conversão
-    # -------------------------
-    st.header("Funil de Conversão")
-    if camp_strat is not None and not camp_strat.empty:
-        # Extrair métricas do funil
-        impressoes = camp_strat["Impressões"].sum() if "Impressões" in camp_strat.columns else 0
-        cliques = camp_strat["Cliques"].sum() if "Cliques" in camp_strat.columns else 0
-        vendas = camp_strat["Qtd_Vendas"].sum() if "Qtd_Vendas" in camp_strat.columns else 0
-        
-        ctr = (cliques / impressoes * 100) if impressoes > 0 else 0
-        cpc = (invest_ads / cliques) if cliques > 0 else 0
-        taxa_conversao = (vendas / cliques * 100) if cliques > 0 else 0
-        cpa = (invest_ads / vendas) if vendas > 0 else 0
-        
-        # Layout: Funil + Métricas ao lado
-        col_funnel, col_metrics = st.columns([2, 1])
-        
-        with col_funnel:
-            # Criar funil com Plotly
-            fig_funnel = go.Figure(go.Funnel(
-                y=['Atração', 'Conversão', 'Venda'],
-                x=[int(impressoes), int(cliques), int(vendas)],
-                marker=dict(
-                    color=['#FFA500', '#FF6B35', '#1a1a1a'],
-                    line=dict(color='white', width=2)
-                ),
-                textposition="inside",
-                textinfo="value+percent initial",
-                textfont=dict(color='white', size=14),
-                connector=dict(line=dict(color="#556B2F", width=2))
-            ))
-            
-            fig_funnel.update_layout(
-                plot_bgcolor="#0a0a0a",
-                paper_bgcolor="#0a0a0a",
-                font=dict(color="#ffffff", size=12),
-                height=350,
-                margin=dict(l=30, r=30, t=30, b=30),
-                showlegend=False
-            )
-            
-            st.plotly_chart(fig_funnel, use_container_width=True)
-        
-        with col_metrics:
-            st.metric("CTR", fmt_percent_br(ctr))
-            st.metric("CPC", fmt_money_br(cpc))
-            st.metric("Taxa Conv.", fmt_percent_br(taxa_conversao))
-            st.metric("CPA", fmt_money_br(cpa))
-    
     st.divider()
 
     # -------------------------
@@ -978,7 +960,7 @@ def main():
     # -------------------------
     # Painel geral
     # -------------------------
-    st.subheader("Painel Geral de Campanhas")
+    with st.expander("Painel Geral de Campanhas", expanded=True):
         panel_raw = ml.build_control_panel(camp_strat)
         panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
         panel_view = prepare_df_for_view(panel_raw, drop_cpi_cols=True, drop_roas_generic=False)
@@ -989,7 +971,7 @@ def main():
     # -------------------------
     # Matriz CPI
     # -------------------------
-    st.subheader("Matriz CPI (Oportunidades de Otimização)")
+    with st.expander("Matriz CPI (Oportunidades de Otimização)", expanded=False):
         cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
         # Visao limpa (sem alterar calculos): esconder colunas auxiliares, remover duplicidades e alinhar ROAS/ACOS
         cpi_view = prepare_df_for_view(cpi_raw, drop_cpi_cols=True, drop_roas_generic=True)
@@ -1000,7 +982,7 @@ def main():
     # -------------------------
     # Nível de anúncio (Patrocinados)
     # -------------------------
-    st.subheader("Análise Tática por Anúncio (Ads)")
+    with st.expander("🎯 Análise Tática por Anúncio (Ads)", expanded=False):
         if ads_panel is None or (hasattr(ads_panel, "empty") and ads_panel.empty):
             st.info("Sem dados de anúncios patrocinados para analisar.")
         else:
@@ -1014,34 +996,34 @@ def main():
 
             c1, c2, c3, c4, c5, c6 = st.columns(6)
             c1.metric("Total Anúncios", total_ads)
-            c2.metric("Vencedores", n_vencedores)
-            c3.metric("Pausar", n_pausar)
-            c4.metric("Fotos/Clips", n_fotos)
-            c5.metric("Keywords", n_kw)
-            c6.metric("Oferta", n_oferta)
+            c2.metric("🏆 Vencedores", n_vencedores)
+            c3.metric("🛑 Pausar", n_pausar)
+            c4.metric("📸 Fotos/Clips", n_fotos)
+            c5.metric("⌨️ Keywords", n_kw)
+            c6.metric("🏷️ Oferta", n_oferta)
 
             st.divider()
 
             tab_pausar, tab_vencedores, tab_otim, tab_completo = st.tabs([
-                "Pausar", "Vencedores", "Otimização", "Painel Completo"
+                "🛑 Pausar", "🏆 Vencedores", "🔧 Otimização", "📊 Painel Completo"
             ])
 
             with tab_pausar:
                 st.subheader("Anúncios para pausar (refino de campanha)")
-            ads_pausar_view = prepare_df_for_view(ads_pausar, drop_cpi_cols=True, drop_roas_generic=False) if ads_pausar is not None else pd.DataFrame()
-            st.dataframe(format_table_br(ads_pausar_view), use_container_width=True)
+                ads_pausar_view = prepare_df_for_view(ads_pausar, drop_cpi_cols=True, drop_roas_generic=False) if ads_pausar is not None else pd.DataFrame()
+                st.dataframe(format_table_br(ads_pausar_view), use_container_width=True)
 
             with tab_vencedores:
                 st.subheader("Anúncios vencedores (preservar)")
-            ads_vencedores_view = prepare_df_for_view(ads_vencedores, drop_cpi_cols=True, drop_roas_generic=False) if ads_vencedores is not None else pd.DataFrame()
-            st.dataframe(format_table_br(ads_vencedores_view), use_container_width=True)
+                ads_vencedores_view = prepare_df_for_view(ads_vencedores, drop_cpi_cols=True, drop_roas_generic=False) if ads_vencedores is not None else pd.DataFrame()
+                st.dataframe(format_table_br(ads_vencedores_view), use_container_width=True)
 
             with tab_otim:
                 st.subheader("Anúncios para otimização")
-            t1, t2, t3 = st.tabs(["Fotos e Clips", "Palavras-chave", "Oferta"])
-            with t1:
-                v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
-                st.dataframe(format_table_br(v), use_container_width=True)
+                t1, t2, t3 = st.tabs(["📸 Fotos e Clips", "⌨️ Palavras-chave", "🏷️ Oferta"])
+                with t1:
+                    v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
+                    st.dataframe(format_table_br(v), use_container_width=True)
                 with t2:
                     v = prepare_df_for_view(ads_otim_keywords, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_keywords is not None else pd.DataFrame()
                     st.dataframe(format_table_br(v), use_container_width=True)
@@ -1051,13 +1033,13 @@ def main():
 
             with tab_completo:
                 st.subheader("Painel completo por anúncio")
-            ads_view = prepare_df_for_view(ads_panel, drop_cpi_cols=True, drop_roas_generic=False)
-            st.dataframe(format_table_br(ads_view), use_container_width=True)
+                ads_view = prepare_df_for_view(ads_panel, drop_cpi_cols=True, drop_roas_generic=False)
+                st.dataframe(format_table_br(ads_view), use_container_width=True)
 
     # -------------------------
     # Plano de Ação 15 Dias
     # -------------------------
-    st.header("Plano de Ação Estratégico (15 Dias)")
+    st.header("📅 Plano de Ação Estratégico (15 Dias)")
     st.info("Este plano respeita a janela de 7 dias do algoritmo do Mercado Livre. Não faça alterações nas mesmas campanhas em intervalos menores que uma semana.")
     
     plan15 = ml.build_15_day_plan(camp_strat)
@@ -1090,29 +1072,29 @@ def main():
     acos_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(acos_disp), drop_cpi_cols=True, drop_roas_generic=False)
     acos_fmt = format_table_br(acos_view)
 
-    st.header("Ações Recomendadas por Categoria")
+    st.header("🎯 Ações Recomendadas por Categoria")
     
     tab_pausar, tab_entrar, tab_escalar, tab_roas = st.tabs([
-        "Pausar/Revisar", "Entrar em Ads", "Escalar Orçamento", "Baixar ROAS Objetivo"
+        "🛑 Pausar/Revisar", "✅ Entrar em Ads", "🚀 Escalar Orçamento", "⬇️ Baixar ROAS Objetivo"
     ])
 
     with tab_pausar:
-        st.subheader("Campanhas para pausar ou revisar")
+        st.subheader("🛑 Campanhas para pausar ou revisar")
         st.info("Campanhas com ROAS baixo ou investimento sem retorno.")
         st.dataframe(pause_fmt, use_container_width=True)
     
     with tab_entrar:
-        st.subheader("Oportunidades para entrar em Ads")
+        st.subheader("✅ Oportunidades para entrar em Ads")
         st.info("Anúncios orgânicos com alta conversão que ainda não estão em Ads.")
         st.dataframe(enter_fmt, use_container_width=True)
 
     with tab_escalar:
-        st.subheader("Campanhas para escalar orçamento")
+        st.subheader("🚀 Campanhas para escalar orçamento")
         st.info("Campanhas com ROAS forte que estão perdendo impressões por orçamento.")
         st.dataframe(scale_fmt, use_container_width=True)
 
     with tab_roas:
-        st.subheader("Campanhas para baixar ROAS objetivo")
+        st.subheader("⬇️ Campanhas para baixar ROAS objetivo")
         st.info("Campanhas competitivas que podem ganhar mais mercado reduzindo o ROAS alvo.")
         st.dataframe(acos_fmt, use_container_width=True)
 
@@ -1120,10 +1102,10 @@ def main():
     # Visão de Estoque (opcional)
     # -------------------------
     if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
-        st.subheader("Visão de Estoque")
-        if not blocked_stock.empty:
+        with st.expander("📦 Visão de Estoque", expanded=False):
+            if not blocked_stock.empty:
                 st.subheader("Bloqueados por estoque (iriam para Ads, mas não têm quantidade mínima)")
-            st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
+                st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
             else:
                 st.write("Nenhum item foi bloqueado por estoque nas regras atuais.")
 
@@ -1133,8 +1115,8 @@ def main():
                 risco = risco[risco["Estoque_Status"].isin(["ZERADO", "CRITICO", "BAIXO"])].copy()
             if not risco.empty:
                 st.subheader("Risco de ruptura nas ações")
-            risco_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(risco), drop_cpi_cols=True, drop_roas_generic=False)
-            st.dataframe(format_table_br(risco_view), use_container_width=True)
+                risco_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(risco), drop_cpi_cols=True, drop_roas_generic=False)
+                st.dataframe(format_table_br(risco_view), use_container_width=True)
             else:
                 st.write("Sem alertas de estoque nas ações atuais.")
 
@@ -1174,7 +1156,7 @@ def main():
     # -------------------------
     if camp_snap is not None and not camp_snap.empty:
         st.divider()
-        st.header(" Evolução e Resultados (Comparativo)")
+        st.header("📈 Evolução e Resultados (Comparativo)")
         st.success("Snapshot de referência detectado! Analisando evolução das campanhas e anúncios...")
         
         # KPIs Comparativos Globais
@@ -1185,13 +1167,13 @@ def main():
             snap_invest = float(kpis_snap.get("Investimento Ads (R$)", 0))
             snap_receita = float(kpis_snap.get("Receita Ads (R$)", 0))
             snap_roas = float(kpis_snap.get("ROAS", 0))
-            st.sidebar.info(" Usando KPIs Globais do Snapshot")
+            st.sidebar.info("✅ Usando KPIs Globais do Snapshot")
         else:
             # Fallback para snapshots antigos (soma das campanhas ativas)
             snap_invest = float(pd.to_numeric(camp_snap["Investimento"], errors="coerce").fillna(0).sum())
             snap_receita = float(pd.to_numeric(camp_snap["Receita"], errors="coerce").fillna(0).sum())
             snap_roas = snap_receita / snap_invest if snap_invest > 0 else 0
-            st.sidebar.warning(" Usando Fallback (Soma de Campanhas)")
+            st.sidebar.warning("⚠️ Usando Fallback (Soma de Campanhas)")
         
         delta_invest = invest_ads - snap_invest
         delta_receita = receita_ads - snap_receita
@@ -1208,47 +1190,47 @@ def main():
             return f"{val:+.2f}x"
 
         c_cols = st.columns(4)
-        c_cols[0].metric("Investimento", fmt_money_br(invest_ads), delta=fmt_delta_money(delta_invest))
-        c_cols[1].metric("Receita", fmt_money_br(receita_ads), delta=fmt_delta_money(delta_receita))
-        c_cols[2].metric("ROAS", f"{roas_val:.2f}x", delta=fmt_delta_roas(delta_roas))
+        c_cols[0].metric("💰 Investimento", fmt_money_br(invest_ads), delta=fmt_delta_money(delta_invest), delta_color="inverse")
+        c_cols[1].metric("📈 Receita", fmt_money_br(receita_ads), delta=fmt_delta_money(delta_receita))
+        c_cols[2].metric("🎯 ROAS", f"{roas_val:.2f}x", delta=fmt_delta_roas(delta_roas))
         
         # Tacos Delta (se disponível)
-        c_cols[3].metric("TACOS", fmt_percent_br(tacos_pct), delta="Atual")
+        c_cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta="Atual")
 
         st.divider()
         
-        tab_ev_camp, tab_ev_ads = st.tabs(["Evolução de Campanhas", "Evolução de Anúncios (MLB)"])
+        tab_ev_camp, tab_ev_ads = st.tabs(["📊 Evolução de Campanhas", "🎯 Evolução de Anúncios (MLB)"])
         
         with tab_ev_camp:
             st.subheader("Migração de Quadrantes")
-        migracao_counts = camp_strat_disp["Migracao_Quadrante"].value_counts().reset_index()
-        migracao_counts.columns = ["Migração", "Contagem"]
-        st.dataframe(migracao_counts, use_container_width=True)
+            migracao_counts = camp_strat_disp["Migracao_Quadrante"].value_counts().reset_index()
+            migracao_counts.columns = ["Migração", "Contagem"]
+            st.dataframe(migracao_counts, use_container_width=True)
 
             st.subheader("Tabela Comparativa de Campanhas")
-        cols_to_show = [
-            "Nome", "Quadrante", "Migracao_Quadrante", "Acao_Recomendada", 
-            "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
-            "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Recomendada_Snap"
-        ]
-        camp_comp_view = prepare_df_for_view(camp_strat_disp[[c for c in cols_to_show if c in camp_strat_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
-        st.dataframe(format_table_br(camp_comp_view), use_container_width=True)
+            cols_to_show = [
+                "Nome", "Quadrante", "Migracao_Quadrante", "Acao_Recomendada", 
+                "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
+                "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Recomendada_Snap"
+            ]
+            camp_comp_view = prepare_df_for_view(camp_strat_disp[[c for c in cols_to_show if c in camp_strat_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
+            st.dataframe(format_table_br(camp_comp_view), use_container_width=True)
 
         with tab_ev_ads:
             if anuncio_snap is not None and not anuncio_snap.empty:
                 st.subheader("Migração de Status de Anúncios")
-            migracao_counts_ads = ads_panel_disp["Migracao_Status"].value_counts().reset_index()
-            migracao_counts_ads.columns = ["Migração", "Contagem"]
-            st.dataframe(migracao_counts_ads, use_container_width=True)
+                migracao_counts_ads = ads_panel_disp["Migracao_Status"].value_counts().reset_index()
+                migracao_counts_ads.columns = ["Migração", "Contagem"]
+                st.dataframe(migracao_counts_ads, use_container_width=True)
 
                 st.subheader("Tabela Comparativa de Anúncios (MLB)")
-            cols_to_show_ads = [
-                "ID", "Titulo", "Campanha", "Status_Anuncio", "Migracao_Status", 
-                "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
-                "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Anuncio", "Acao_Anuncio_Snap"
-            ]
-            ads_comp_view = prepare_df_for_view(ads_panel_disp[[c for c in cols_to_show_ads if c in ads_panel_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
-            st.dataframe(format_table_br(ads_comp_view), use_container_width=True)
+                cols_to_show_ads = [
+                    "ID", "Titulo", "Campanha", "Status_Anuncio", "Migracao_Status", 
+                    "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
+                    "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Anuncio", "Acao_Anuncio_Snap"
+                ]
+                ads_comp_view = prepare_df_for_view(ads_panel_disp[[c for c in cols_to_show_ads if c in ads_panel_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
+                st.dataframe(format_table_br(ads_comp_view), use_container_width=True)
             else:
                 st.info("O snapshot carregado não contém dados detalhados de anúncios para comparação.")
 
