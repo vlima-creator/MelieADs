@@ -8,6 +8,7 @@ import re
 import ml_report as ml
 import os
 import liquid_glass_components as lgc
+import sales_funnel as sf
 import marketplace_config as mkt
 import shopee_report as shopee
 
@@ -1008,6 +1009,15 @@ def main():
             }
         ])
         
+        # Funil de Vendas (Mercado Livre)
+        st.markdown("---")
+        impressoes_ml = int(camp_strat["Impressões"].sum()) if "Impressões" in camp_strat.columns else 0
+        cliques_ml = int(camp_strat["Cliques"].sum()) if "Cliques" in camp_strat.columns else 0
+        conversoes_ml = int(camp_strat["Conversões"].sum()) if "Conversões" in camp_strat.columns else 0
+        
+        funil_html_ml = sf.create_sales_funnel_html(impressoes_ml, cliques_ml, conversoes_ml)
+        st.markdown(funil_html_ml, unsafe_allow_html=True)
+        
     elif selected_marketplace == "shopee":
         gmv_total = float(kpis.get("GMV Total", 0))
         despesas = float(kpis.get("Despesas", 0))
@@ -1049,6 +1059,15 @@ def main():
                 "value": str(campanhas_protegidas)
             }
         ])
+        
+        # Funil de Vendas (Shopee)
+        st.markdown("---")
+        impressoes_shopee = int(df_shopee_protecao["Impressões"].sum()) if "Impressões" in df_shopee_protecao.columns else 0
+        cliques_shopee = int(df_shopee_protecao["Cliques"].sum()) if "Cliques" in df_shopee_protecao.columns else 0
+        conversoes_shopee = int(df_shopee_protecao["Conversões Totais"].sum()) if "Conversões Totais" in df_shopee_protecao.columns else 0
+        
+        funil_html_shopee = sf.create_sales_funnel_html(impressoes_shopee, cliques_shopee, conversoes_shopee)
+        st.markdown(funil_html_shopee, unsafe_allow_html=True)
 
     st.divider()
 
