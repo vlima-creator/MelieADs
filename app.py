@@ -603,21 +603,21 @@ def render_pareto_chart(df):
     
     fig = go.Figure()
     
-    # Barras de Receita
+    # Barras de Receita (verde militar)
     fig.add_trace(go.Bar(
         x=df_sorted["Nome"],
         y=df_sorted["Receita"],
         name="Receita",
-        marker_color="#3483fa"
+        marker_color="#556B2F"
     ))
     
-    # Linha de Percentual Acumulado
+    # Linha de Percentual Acumulado (verde militar claro)
     fig.add_trace(go.Scatter(
         x=df_sorted["Nome"],
         y=df_sorted["Receita_Cum_Pct"],
         name="% Acumulado",
         yaxis="y2",
-        line=dict(color="#ffe600", width=3),
+        line=dict(color="#6B8E23", width=3),
         mode="lines+markers"
     ))
     
@@ -627,6 +627,9 @@ def render_pareto_chart(df):
         yaxis=dict(title="Receita (R$)"),
         yaxis2=dict(title="% Acumulado", overlaying="y", side="right", range=[0, 110]),
         template="plotly_dark",
+        plot_bgcolor="#0a0a0a",
+        paper_bgcolor="#0a0a0a",
+        font=dict(color="#ffffff"),
         margin=dict(l=20, r=20, t=40, b=20),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
@@ -643,23 +646,35 @@ def render_treemap_chart(df):
     df_plot["ROAS_Real"] = pd.to_numeric(df_plot.get("ROAS_Real", 0), errors="coerce").fillna(0)
     df_plot["Quadrante"] = df_plot.get("Quadrante", "SEM_CLASSIFICACAO")
     
+    # Escala de cores customizada (vermelho -> verde militar -> verde)
+    custom_colorscale = [
+        [0, "#f53d3d"],      # Vermelho (ROAS baixo)
+        [0.3, "#ff9800"],    # Laranja
+        [0.5, "#556B2F"],    # Verde Militar
+        [0.7, "#6B8E23"],    # Verde Militar Claro
+        [1, "#00a650"]       # Verde (ROAS alto)
+    ]
+    
     # Criar figura com Treemap usando path e values
     fig = px.treemap(
         df_plot,
         path=["Quadrante", "Nome"],
         values="Investimento",
         color="ROAS_Real",
-        color_continuous_scale="RdYlGn",
+        color_continuous_scale=custom_colorscale,
         title="Alocacao de Investimento por Campanha (Tamanho = Investimento, Cor = ROAS)",
         template="plotly_dark",
         color_continuous_midpoint=5,
         hover_name="Nome"
     )
     
-    fig.update_traces(textposition="middle center", textfont_size=10)
+    fig.update_traces(textposition="middle center", textfont_size=10, textfont_color="#ffffff")
     fig.update_layout(
         margin=dict(l=20, r=20, t=40, b=20),
-        coloraxis_colorbar=dict(title="ROAS")
+        plot_bgcolor="#0a0a0a",
+        paper_bgcolor="#0a0a0a",
+        font=dict(color="#ffffff"),
+        coloraxis_colorbar=dict(title="ROAS", tickfont=dict(color="#ffffff"), titlefont=dict(color="#ffffff"))
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -941,6 +956,60 @@ def main():
     
     cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
 
+    st.divider()
+
+    # -------------------------
+    # Funil de Conversão
+    # -------------------------
+    st.header("🎯 Funil de Conversão")
+    if camp_strat is not None and not camp_strat.empty:
+        # Extrair métricas do funil
+        impressoes = camp_strat["Impressões"].sum() if "Impressões" in camp_strat.columns else 0
+        cliques = camp_strat["Cliques"].sum() if "Cliques" in camp_strat.columns else 0
+        vendas = camp_strat["Qtd_Vendas"].sum() if "Qtd_Vendas" in camp_strat.columns else 0
+        
+        # Criar funil com Plotly
+        fig_funnel = go.Figure(go.Funnel(
+            y=['Impressões<br>(Topo)', 'Cliques<br>(Meio)', 'Vendas<br>(Fundo)'],
+            x=[int(impressoes), int(cliques), int(vendas)],
+            marker=dict(
+                color=['#556B2F', '#6B8E23', '#7a9d2a'],
+                line=dict(color='white', width=2)
+            ),
+            textposition="inside",
+            textinfo="value+percent initial",
+            textfont=dict(color='white', size=12),
+            connector=dict(line=dict(color="#556B2F", width=2))
+        ))
+        
+        fig_funnel.update_layout(
+            plot_bgcolor="#0a0a0a",
+            paper_bgcolor="#0a0a0a",
+            font=dict(color="#ffffff", size=12),
+            height=400,
+            margin=dict(l=50, r=50, t=50, b=50),
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig_funnel, use_container_width=True)
+        
+        # Métricas do funil
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        
+        ctr = (cliques / impressoes * 100) if impressoes > 0 else 0
+        cpc = (invest_ads / cliques) if cliques > 0 else 0
+        taxa_conversao = (vendas / cliques * 100) if cliques > 0 else 0
+        cpa = (invest_ads / vendas) if vendas > 0 else 0
+        
+        with col_f1:
+            st.metric("CTR", fmt_percent_br(ctr), delta="Taxa de Clique")
+        with col_f2:
+            st.metric("CPC", fmt_money_br(cpc), delta="Custo por Clique")
+        with col_f3:
+            st.metric("Taxa Conv.", fmt_percent_br(taxa_conversao), delta="Conversão")
+        with col_f4:
+            st.metric("CPA", fmt_money_br(cpa), delta="Custo por Aquisição")
+    
     st.divider()
 
     # -------------------------
