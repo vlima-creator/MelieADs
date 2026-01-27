@@ -1238,6 +1238,21 @@ def main():
                 st.success("✅ Nenhuma campanha precisa ser pausada.")
         
         st.divider()
+        
+        # Download Excel (Shopee)
+        st.header("Download do Relatório Completo (Shopee)")
+        try:
+            excel_bytes_shopee = shopee.gerar_excel_shopee(resultado_shopee)
+            st.download_button(
+                "Baixar Excel do relatório Shopee",
+                data=excel_bytes_shopee,
+                file_name="relatorio_shopee_ads.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error("Não consegui gerar o Excel da Shopee.")
+            st.exception(e)
 
     # -------------------------
     # Painel geral (Mercado Livre)

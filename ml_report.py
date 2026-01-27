@@ -302,15 +302,20 @@ def save_snapshot_v2(df_campanha_estrategica, df_anuncio_estrategico, snapshot_p
     ]
     anuncio_snap = df_anuncio_estrategico[[c for c in anuncio_cols if c in df_anuncio_estrategico.columns]].copy()
 
-    # Salva em abas separadas
-    with pd.ExcelWriter(snapshot_path, engine='xlsxwriter') as writer:
-        camp_snap.to_excel(writer, sheet_name='Campanhas_Snapshot', index=False)
-        anuncio_snap.to_excel(writer, sheet_name='Anuncios_Snapshot', index=False)
+    # Salva em abas separadas com formatação
+    from excel_utils import save_to_excel
+    
+    dfs = {
+        'Campanhas_Snapshot': camp_snap,
+        'Anuncios_Snapshot': anuncio_snap
+    }
+    
+    if kpis_globais:
+        dfs['KPIs_Globais'] = pd.DataFrame([kpis_globais])
         
-        # Salva KPIs globais em uma aba dedicada para garantir paridade total
-        if kpis_globais:
-            df_kpis = pd.DataFrame([kpis_globais])
-            df_kpis.to_excel(writer, sheet_name='KPIs_Globais', index=False)
+    excel_data = save_to_excel(dfs)
+    with open(snapshot_path, "wb") as f:
+        f.write(excel_data)
 
     return snapshot_path
 
@@ -1054,49 +1059,49 @@ def build_tables(
 
 
 def gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=None) -> bytes:
+    from excel_utils import save_to_excel
+    
     # Se for um snapshot simplificado, gera um Excel basico
     is_snapshot = "Data_Snapshot" in camp_strat.columns
     
-    out = BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        if is_snapshot:
-            camp_strat.to_excel(writer, index=False, sheet_name="Campanhas Estrategicas")
-        else:
-            diagnosis = build_executive_diagnosis(camp_strat, daily=daily)
-            highlights = build_opportunity_highlights(camp_strat)
-            plan7 = build_7_day_plan(camp_strat)
-            panel = build_control_panel(camp_strat)
+    dfs = {}
+    if is_snapshot:
+        dfs["Campanhas Estrategicas"] = camp_strat
+    else:
+        diagnosis = build_executive_diagnosis(camp_strat, daily=daily)
+        highlights = build_opportunity_highlights(camp_strat)
+        plan7 = build_7_day_plan(camp_strat)
+        panel = build_control_panel(camp_strat)
 
-            resumo = pd.DataFrame([kpis])
-            diag_df = pd.DataFrame([{
-                "Investimento": diagnosis["Investimento"],
-                "Receita": diagnosis["Receita"],
-                "Vendas": diagnosis["Vendas"],
-                "ROAS": diagnosis["ROAS"],
-                "ACOS_real": diagnosis["ACOS_real"],
-                "Veredito": diagnosis["Veredito"],
-                "Trend_cpc_proxy": diagnosis["Tendencias"].get("cpc_proxy_up", 0),
-                "Trend_ticket": diagnosis["Tendencias"].get("ticket_down", 0),
-                "Trend_roas": diagnosis["Tendencias"].get("roas_down", 0),
-            }])
+        resumo = pd.DataFrame([kpis])
+        diag_df = pd.DataFrame([{
+            "Investimento": diagnosis["Investimento"],
+            "Receita": diagnosis["Receita"],
+            "Vendas": diagnosis["Vendas"],
+            "ROAS": diagnosis["ROAS"],
+            "ACOS_real": diagnosis["ACOS_real"],
+            "Veredito": diagnosis["Veredito"],
+            "Trend_cpc_proxy": diagnosis["Tendencias"].get("cpc_proxy_up", 0),
+            "Trend_ticket": diagnosis["Tendencias"].get("ticket_down", 0),
+            "Trend_roas": diagnosis["Tendencias"].get("roas_down", 0),
+        }])
 
-            diag_df.to_excel(writer, index=False, sheet_name="DIAGNOSTICO_EXEC")
-            resumo.to_excel(writer, index=False, sheet_name="RESUMO")
-            panel.to_excel(writer, index=False, sheet_name="PAINEL_GERAL")
-            camp_strat.to_excel(writer, index=False, sheet_name="MATRIZ_CPI")
-            highlights["Locomotivas"].to_excel(writer, index=False, sheet_name="LOCOMOTIVAS")
-            highlights["Minas"].to_excel(writer, index=False, sheet_name="MINAS_LIMITADAS")
-            plan7.to_excel(writer, index=False, sheet_name="PLANO_7_DIAS")
-            pause.to_excel(writer, index=False, sheet_name="PAUSAR_CAMPANHAS")
-            enter.to_excel(writer, index=False, sheet_name="ENTRAR_EM_ADS")
-            scale.to_excel(writer, index=False, sheet_name="ESCALAR_ORCAMENTO")
-            acos.to_excel(writer, index=False, sheet_name="BAIXAR_ROAS")
-            camp_agg.to_excel(writer, index=False, sheet_name="BASE_CAMPANHAS_AGG")
-            if daily is not None:
-                daily.to_excel(writer, index=False, sheet_name="SERIE_DIARIA")
-                
-    out.seek(0)
-    return out.read()
+        dfs["DIAGNOSTICO_EXEC"] = diag_df
+        dfs["RESUMO"] = resumo
+        dfs["PAINEL_GERAL"] = panel
+        dfs["MATRIZ_CPI"] = camp_strat
+        dfs["LOCOMOTIVAS"] = highlights["Locomotivas"]
+        dfs["MINAS_LIMITADAS"] = highlights["Minas"]
+        dfs["PLANO_7_DIAS"] = plan7
+        dfs["PAUSAR_CAMPANHAS"] = pause
+        dfs["ENTRAR_EM_ADS"] = enter
+        dfs["ESCALAR_ORCAMENTO"] = scale
+        dfs["BAIXAR_ROAS"] = acos
+        dfs["BASE_CAMPANHAS_AGG"] = camp_agg
+        if daily is not None:
+            dfs["SERIE_DIARIA"] = daily
+            
+    return save_to_excel(dfs)
 
 def compare_snapshots(df_current: pd.DataFrame, df_reference: pd.DataFrame) -> pd.DataFrame:
     """Compara o estado atual das campanhas com um snapshot de referência."""

@@ -345,3 +345,39 @@ def processar_relatorio_shopee(dados_gerais_file, palavras_chave_file=None):
             resultado["keywords_error"] = str(e)
     
     return resultado
+
+def gerar_excel_shopee(resultado: dict) -> bytes:
+    """
+    Gera um arquivo Excel formatado com os resultados da Shopee.
+    
+    Args:
+        resultado: Dicionário retornado por processar_relatorio_shopee
+        
+    Returns:
+        bytes: Conteúdo do arquivo Excel
+    """
+    from excel_utils import save_to_excel
+    
+    dfs = {
+        "RESUMO_KPIS": pd.DataFrame([resultado["kpis"]]),
+        "DADOS_GERAIS": resultado["df_geral"],
+        "PROTECAO_ROAS": resultado["df_protecao"],
+        "CONVERSOES_DIRETAS": resultado["df_conversoes"]
+    }
+    
+    if "df_keywords" in resultado and resultado["df_keywords"] is not None:
+        dfs["PALAVRAS_CHAVE"] = resultado["df_keywords"]
+        
+    # Adicionar recomendações como uma aba
+    recs = resultado["recomendacoes"]
+    recs_list = []
+    for tipo, lista in recs.items():
+        for item in lista:
+            item_copy = item.copy()
+            item_copy["Tipo"] = tipo
+            recs_list.append(item_copy)
+    
+    if recs_list:
+        dfs["RECOMENDACOES"] = pd.DataFrame(recs_list)
+        
+    return save_to_excel(dfs)
