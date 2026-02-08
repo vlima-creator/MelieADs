@@ -1,0 +1,61 @@
+{
+    "cliente": {
+        "empresa": "Tamoyo",
+        "categoria": "Ferramentas",
+        "ticket_medio": 204.34,
+        "margem": 0.15,
+        "faturamento_3m": 33511.65,
+        "unidades_3m": 200,
+        "range_permitido": 20.0,
+        "ticket_custom": null
+    },
+    "mercado_categoria": [
+        {
+            "periodo": "2025-01-01 00:00:00",
+            "faturamento": 601000.0,
+            "unidades": 3300
+        },
+        {
+            "periodo": "2025-02-01 00:00:00",
+            "faturamento": 577000.0,
+            "unidades": 3100
+        },
+        {
+            "periodo": "2025-03-01 00:00:00",
+            "faturamento": 611800.0,
+            "unidades": 3300
+        },
+        {
+            "periodo": "2025-04-01 00:00:00",
+            "faturamento": 612100.0,
+            "unidades": 3300
+        },
+        {
+            "periodo": "2025-05-01 00:00:00",
+            "faturamento": 656600.0,
+            "unidades": 3600
+        },
+        {
+            "periodo": "2025-06-01 00:00:00",
+            "faturamento": 676500.0,
+            "unidades": 3900
+        }
+    ],
+    "mercado_subcategorias": [
+        {
+            "subcategoria": "Ferramentas Eletricas",
+            "faturamento_6m": 3730000000.0,
+            "unidades_6m": 20500000
+        },
+        {
+            "subcategoria": "Ferramentas Manuais",
+            "faturamento_6m": 583600000.0,
+            "unidades_6m": 5150000
+        },
+        {
+            "subcategoria": "Acessórios para Ferramentas",
+            "faturamento_6m": 555600000.0,
+            "unidades_6m": 6000000
+        }
+    ]
+}
