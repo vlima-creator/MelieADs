@@ -1,1322 +1,1524 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Aplicação Streamlit - Tamanho do Mercado
-Dashboard interativo para análise estratégica de múltiplas categorias macro
-Layout Modernizado - Versão Dark Theme
-"""
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime
-import sys
-import os
-import json
 import re
-import io
-sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
-from utils.pdf_generator import PDFReportGenerator
 
-from utils.market_analyzer import MarketAnalyzer
-from utils.visualizations import (
-    criar_grafico_evolucao_categoria,
-    criar_grafico_ticket_medio,
-    criar_grafico_ranking_subcategorias,
-    criar_grafico_mercado_subcategorias,
-    criar_grafico_cenarios,
-    criar_grafico_crescimento,
-    criar_gauge_score,
-    criar_comparacao_tickets
-)
+import ml_report as ml
+import os
+import liquid_glass_components as lgc
+import sales_funnel as sf
+import marketplace_config as mkt
+import shopee_report as shopee
 
-# Configuração da página
-st.set_page_config(
-    page_title="Inteligência de Mercado",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
-# --- FUNÇÕES UTILITÁRIAS ---
+# -------------------------
+# Formatadores BR
+# -------------------------
+def fmt_money_br(x):
+    if pd.isna(x):
+        return ""
+    return f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def format_br(valor):
-    """Formata números para o padrão brasileiro (1.234,56)"""
-    if valor is None: return "0,00"
+
+def fmt_percent_br(x):
+    if pd.isna(x):
+        return ""
+    return f"{x:.2f}%".replace(".", ",")
+
+
+def fmt_number_br(x, decimals=2):
+    if pd.isna(x):
+        return ""
+    return f"{x:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def fmt_int_br(x):
+    if pd.isna(x):
+        return ""
     try:
-        return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
-        return str(valor)
+        return f"{int(round(float(x))):,}".replace(",", ".")
+    except Exception:
+        return ""
 
-def parse_large_number(text):
-    """Converte strings como '1.5M' ou '500k' em números reais"""
-    if isinstance(text, (int, float)):
-        return float(text)
-    
-    text = str(text).strip().upper()
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif "," in text:
-        text = text.replace(",", ".")
-    
-    multipliers = {'K': 1_000, 'M': 1_000_000, 'B': 1_000_000_000}
-    match = re.match(r"([\d.]+)([KMB]?)", text)
-    if match:
-        value, unit = match.groups()
-        try:
-            num = float(value)
-            if unit in multipliers:
-                num *= multipliers[unit]
-            return num
-        except ValueError:
-            return 0.0
-    return 0.0
 
-def safe_float(val):
-    try:
-        if pd.isna(val): return 0.0
-        return float(val)
-    except:
-        return 0.0
+# -------------------------
+# Estoque (opcional)
+# -------------------------
+def _digits_only(s) -> str:
+    s = "" if s is None else str(s)
+    return re.sub(r"\D", "", s)
 
-def calcular_limites_ticket_local(ticket_mercado, range_permitido=0.20):
-    """Calcula limites inferior e superior baseado no ticket do mercado"""
-    if not ticket_mercado: return 0.0, 0.0
-    inf = ticket_mercado * (1 - range_permitido)
-    sup = ticket_mercado * (1 + range_permitido)
-    return inf, sup
+def _norm_sku(s) -> str:
+    if s is None or (isinstance(s, float) and pd.isna(s)):
+        return ""
+    return str(s).strip().upper()
 
-def criar_metric_card(icon_svg, label, value, border_color="#1E3A8A"):
-    """Cria um card de métrica estilizado com ícone circular"""
-    return f"""
-    <div style="
-        background: #0a0a0a;
-        border: 1px solid #1a1a1a;
-        border-radius: 16px;
-        padding: 24px 20px;
-        text-align: left;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    ">
-        <div style="
-            width: 45px;
-            height: 45px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 20px;
-        ">
-            {icon_svg}
-        </div>
-        <div>
-            <div style="
-                font-size: 0.7rem;
-                color: #FFFFFF;
-                text-transform: uppercase;
-                letter-spacing: 1.5px;
-                margin-bottom: 8px;
-                font-weight: 600;
-                opacity: 0.8;
-            ">{label}</div>
-            <div style="
-                font-size: 1.5rem;
-                color: #FFFFFF;
-                font-weight: 700;
-            ">{value}</div>
-        </div>
-    </div>
+def load_stock_file(file) -> pd.DataFrame:
     """
+    Lê o arquivo de estoque enviado pelo usuário.
 
-# Ícones SVG Estilizados
-SVG_ICONS = {
-    "box": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>',
-    "dollar": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
-    "chart": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
-    "target": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>',
-    "user": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
-    "file": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>'
+    Arquivo base (Anuncios-....xlsx):
+    - Aba: "Anúncios"
+    - Coluna B: ITEM_ID (MLB)
+    - Coluna D: SKU
+    - Coluna G: QUANTITY (Estoque)
+
+    Observação: esse arquivo costuma ter linhas de cabeçalho antes da tabela,
+    por isso usamos skiprows para alinhar corretamente as colunas.
+    """
+    # Mantemos dtype=str para evitar conversões quebradas logo na leitura
+    df = pd.read_excel(file, sheet_name="Anúncios", skiprows=4, dtype=str)
+
+    # Preferência por nomes de coluna (mais seguro que posição)
+    expected = {"ITEM_ID", "SKU", "QUANTITY"}
+    if not expected.issubset(set(df.columns)):
+        # fallback por posição (B, D, G) caso o ML mude o cabeçalho
+        if df.shape[1] < 7:
+            raise ValueError("Arquivo de estoque não tem colunas suficientes (precisa ter pelo menos até a coluna G).")
+        df = df.iloc[:, [1, 3, 6]].copy()
+        df.columns = ["ITEM_ID", "SKU", "QUANTITY"]
+
+    df = df[["ITEM_ID", "SKU", "QUANTITY"]].copy()
+
+    # Filtra linhas válidas
+    df["ITEM_ID"] = df["ITEM_ID"].astype(str).str.strip()
+    df = df[df["ITEM_ID"].str.contains("MLB", na=False)]
+
+    # Normaliza chaves
+    df["MLB_key"] = df["ITEM_ID"].map(_digits_only)
+    df["SKU_key"] = df["SKU"].map(_norm_sku)
+
+    # Estoque como inteiro
+    df["Estoque"] = pd.to_numeric(df["QUANTITY"], errors="coerce").fillna(0).astype(int)
+
+    # Dedup: mantém o maior estoque por MLB
+    df = df.sort_values("Estoque", ascending=False).drop_duplicates(subset=["MLB_key"], keep="first")
+
+    return df[["MLB_key", "SKU_key", "Estoque"]]
+
+def enrich_with_stock(df: pd.DataFrame, stock_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Enriquecimento por:
+    1) MLB (preferência)
+    2) SKU (fallback)
+    """
+    if df is None or df.empty:
+        return df
+    if stock_df is None or stock_df.empty:
+        out = df.copy()
+        if "Estoque" not in out.columns:
+            out["Estoque"] = pd.NA
+        return out
+
+    out = df.copy()
+
+    # Chaves no dataframe principal
+    # Preferimos Codigo_MLB (MLBxxxxxxxx) e depois ID
+    if "Codigo_MLB" in out.columns:
+        out["MLB_key"] = out["Codigo_MLB"].map(_digits_only)
+    elif "ID" in out.columns:
+        out["MLB_key"] = out["ID"].map(_digits_only)
+    else:
+        out["MLB_key"] = ""
+
+    if "SKU" in out.columns:
+        out["SKU_key"] = out["SKU"].map(_norm_sku)
+    else:
+        out["SKU_key"] = ""
+
+    # 1) Merge por MLB_key
+    out = out.merge(
+        stock_df[["MLB_key", "Estoque"]].drop_duplicates("MLB_key"),
+        how="left",
+        on="MLB_key",
+        suffixes=("", "_stk"),
+    )
+
+    # 2) Fallback por SKU_key para quem ficou sem estoque
+    miss = out["Estoque"].isna()
+    if miss.any():
+        sku_map = (
+            stock_df[stock_df["SKU_key"].astype(str).str.len() > 0]
+            .drop_duplicates(subset=["SKU_key"])
+            .set_index("SKU_key")["Estoque"]
+        )
+        out.loc[miss, "Estoque"] = out.loc[miss, "SKU_key"].map(sku_map)
+
+    out["Estoque"] = pd.to_numeric(out["Estoque"], errors="coerce")
+    return out
+
+def apply_stock_rules(enter_df: pd.DataFrame, scale_df: pd.DataFrame, acos_df: pd.DataFrame, pause_df: pd.DataFrame, *,
+                      estoque_min_ads: int, estoque_baixo: int, estoque_critico: int, tratar_estoque_vazio_como_zero: bool):
+    """Ajusta apenas para exibicao: bloqueia entrar em Ads por estoque e marca freio em campanhas."""
+    blocked = pd.DataFrame()
+
+    def _stock_value(s):
+        if s is None or (isinstance(s, float) and pd.isna(s)):
+            return 0 if tratar_estoque_vazio_como_zero else None
+        try:
+            return float(s)
+        except Exception:
+            return 0 if tratar_estoque_vazio_como_zero else None
+
+    def _status(v):
+        if v is None:
+            return "SEM_ESTOQUE"
+        if v <= 0:
+            return "ZERADO"
+        if v <= estoque_critico:
+            return "CRITICO"
+        if v <= estoque_baixo:
+            return "BAIXO"
+        return "OK"
+
+    def _add_status(df):
+        if df is None or df.empty:
+            return df
+        df2 = df.copy()
+        if "Estoque" not in df2.columns:
+            df2["Estoque"] = pd.NA
+        df2["Estoque_Status"] = df2["Estoque"].map(_stock_value).map(_status)
+        return df2
+
+    enter2 = _add_status(enter_df)
+    scale2 = _add_status(scale_df)
+    acos2  = _add_status(acos_df)
+    pause2 = _add_status(pause_df)
+
+    # Bloquear "Entrar em Ads" se estoque insuficiente
+    if enter2 is not None and not enter2.empty and "Estoque" in enter2.columns:
+        v = enter2["Estoque"].map(_stock_value)
+        mask_block = v.notna() & (v < float(estoque_min_ads))
+        if mask_block.any():
+            blocked = enter2.loc[mask_block].copy()
+            blocked["Motivo_Estoque"] = "Estoque abaixo do minimo para entrar em Ads"
+            enter2 = enter2.loc[~mask_block].copy()
+
+    # Marcar freio nas tabelas de escala/ROAS se estoque baixo/critico
+    def _mark_freio(df):
+        if df is None or df.empty or "Estoque" not in df.columns:
+            return df
+        df3 = df.copy()
+        v = df3["Estoque"].map(_stock_value)
+        mask_crit = v.notna() & (v <= float(estoque_critico))
+        mask_low  = v.notna() & (v > float(estoque_critico)) & (v <= float(estoque_baixo))
+        if "Acao_Recomendada" in df3.columns:
+            df3.loc[mask_crit, "Acao_Recomendada"] = "FREAR, ESTOQUE CRITICO"
+            df3.loc[mask_low,  "Acao_Recomendada"] = "FREAR, ESTOQUE BAIXO"
+        if "Motivo" in df3.columns:
+            df3.loc[mask_crit, "Motivo"] = (df3.loc[mask_crit, "Motivo"].astype(str).str.strip() + " | estoque critico")
+            df3.loc[mask_low,  "Motivo"] = (df3.loc[mask_low,  "Motivo"].astype(str).str.strip() + " | estoque baixo")
+        return df3
+
+    scale2 = _mark_freio(scale2)
+    acos2  = _mark_freio(acos2)
+
+    return enter2, scale2, acos2, pause2, blocked
+
+# -------------------------
+# Limpeza e ordenacao das tabelas (APENAS VISUAL)
+# -------------------------
+
+
+def _norm_col(col: str) -> str:
+    return str(col).strip().lower().replace(' ', '_').replace('__', '_')
+
+
+def _drop_cols_by_norm(df: pd.DataFrame, targets_norm: set[str]) -> pd.DataFrame:
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    drop_cols = [c for c in df.columns if _norm_col(c) in targets_norm]
+    return df.drop(columns=drop_cols, errors='ignore')
+
+
+def _keep_first_by_prefix(df: pd.DataFrame, prefixes_norm: tuple[str, ...]) -> pd.DataFrame:
+    """Mantem apenas a primeira coluna cujo nome normalizado inicia com algum prefixo informado."""
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    cols = list(df.columns)
+    hits = [c for c in cols if any(_norm_col(c).startswith(p) for p in prefixes_norm)]
+    if len(hits) <= 1:
+        return df
+    # mantem a primeira na ordem atual
+    for col in hits[1:]:
+        df = df.drop(columns=[col], errors='ignore')
+    return df
+
+
+def _reorder_next_to(df: pd.DataFrame, left_col: str, right_col: str) -> pd.DataFrame:
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    if left_col not in df.columns or right_col not in df.columns:
+        return df
+    cols = list(df.columns)
+    cols.remove(right_col)
+    try:
+        idx = cols.index(left_col) + 1
+    except ValueError:
+        return df
+    cols.insert(idx, right_col)
+    return df[cols]
+
+
+def _enforce_action_block(df: pd.DataFrame) -> pd.DataFrame:
+    """Garante Acao_Recomendada antes de Confianca_Dado e Motivo, sem baguncar o resto."""
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    ordered = []
+    for col in ["Acao_Recomendada", "Confianca_Dado", "Motivo"]:
+        if col in df.columns:
+            ordered.append(col)
+    if not ordered:
+        return df
+    rest = [c for c in df.columns if c not in ordered]
+    # insere o bloco no fim do rest, mas mantendo a ordem do bloco
+    return df[rest + ordered]
+
+
+def _reorder_roas_acos(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Regras visuais:
+    - manter apenas 1 ROAS objetivo (quando houver duplicatas)
+    - colar ROAS_Real ao lado do ROAS objetivo
+    - colar ACOS_Real ao lado do ROAS_Real (logo depois)
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+
+    # 1) manter apenas o primeiro ROAS objetivo (variações)
+    df = _keep_first_by_prefix(df, prefixes_norm=("roas_objetivo", "roas_objetivo_n", "roas_objetivo"))
+
+    # detectar a coluna de ROAS objetivo que sobrou
+    roas_obj_cols = [c for c in df.columns if _norm_col(c).startswith('roas_objetivo')]
+    roas_obj_col = roas_obj_cols[0] if roas_obj_cols else None
+
+    # detectar ROAS real e ACOS real (variações)
+    roas_real_cols = [c for c in df.columns if _norm_col(c) == 'roas_real']
+    roas_real_col = roas_real_cols[0] if roas_real_cols else None
+
+    acos_real_cols = [c for c in df.columns if _norm_col(c) == 'acos_real']
+    acos_real_col = acos_real_cols[0] if acos_real_cols else None
+
+    # 2) posicionar ROAS_Real logo após ROAS objetivo (se existir)
+    if roas_obj_col and roas_real_col:
+        df = _reorder_next_to(df, roas_obj_col, roas_real_col)
+
+    # 3) posicionar ACOS_Real logo após ROAS_Real
+    if roas_real_col and acos_real_col:
+        df = _reorder_next_to(df, roas_real_col, acos_real_col)
+
+    return df
+
+
+def prepare_df_for_view(df: pd.DataFrame, *, drop_cpi_cols: bool = True, drop_roas_generic: bool = False) -> pd.DataFrame:
+    """
+    Aplica padroes de visualizacao sem alterar calculos:
+    - (opcional) remove CPI_Share, CPI_Cum, CPI_80
+    - (opcional) remove ROAS generico (coluna 'ROAS')
+    - remove duplicatas de ROAS objetivo, cola ROAS_Real e ACOS_Real
+    - garante Acao_Recomendada antes de Confianca_Dado e Motivo
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+
+    out = df.copy()
+
+    if drop_cpi_cols:
+        out = _drop_cols_by_norm(out, targets_norm={"cpi_share", "cpi_cum", "cpi_80"})
+
+    if drop_roas_generic:
+        out = _drop_cols_by_norm(out, targets_norm={"roas"})
+
+    out = _reorder_roas_acos(out)
+    out = _enforce_action_block(out)
+    return out
+# -------------------------
+# Detectores de colunas
+# -------------------------
+def _is_money_col(col_name: str) -> bool:
+    c = str(col_name).strip().lower()
+    money_keys = [
+        "orcamento",
+        "orçamento",
+        "investimento",
+        "receita",
+        "vendas_brutas",
+        "potencial_receita",
+        "potencial receita",
+        "impacto_estimado",
+        "impacto estimado",
+        "faturamento",
+        "vendas (r$)",
+        "invest",
+        "invest_campanha",
+        "receita_campanha",
+    ]
+    return any(k in c for k in money_keys)
+
+
+def _is_id_col(col_name: str) -> bool:
+    """
+    IDs sao identificadores, nao devem receber formatacao numerica.
+    Mantem como texto puro (ex: 6086561266).
+    """
+    c = str(col_name).strip().lower().replace("__", "_")
+    return (
+        c == "id"
+        or c == "id_anuncio"
+        or c == "id_anúncio"
+        or c == "id campanha"
+        or c == "id_campanha"
+        or c.endswith("_id")
+        or c.startswith("id_")
+        or "id anuncio" in c
+        or "id anúncio" in c
+        or "id do anuncio" in c
+        or "id do anúncio" in c
+        or "id campanha" in c
+        or c == "mlb_key"
+        or c == "codigo_mlb"
+        or c == "código_mlb"
+        or c == "item_id"
+        or c == "item id"
+        or c.startswith("mlb")
+        or "mlb" in c
+    )
+
+
+# IMPORTANTE
+# Tiramos ACOS objetivo e ACOS_Objetivo_N daqui, porque agora viram ROAS (numero)
+_PERCENT_COLS = {
+    "acos real",
+    "acos_real",
+    "cpi_share",
+    "cpi share",
+    "cpi_cum",
+    "cpi cum",
+    "con_visitas_vendas",
+    "con visitas vendas",
+    "conv_visitas_vendas",
+    "conv visitas vendas",
+    "conv_visitas_compradores",
+    "conv visitas compradores",
+    "perdidas_orc",
+    "perdidas_class",
+    "cvr",
+    "cvr\n(conversion rate)",
 }
 
-# --- INICIALIZAÇÃO ---
 
-# Garantir que o analyzer esteja sempre na sessão e atualizado
-if 'analyzer' not in st.session_state:
-    st.session_state.analyzer = MarketAnalyzer()
-else:
-    # Verificar se o analyzer na sessão tem os métodos mais recentes
-    # Se não tiver, migramos os dados para uma nova instância da classe atualizada
-    if not hasattr(st.session_state.analyzer, 'identificar_anomalias') or not hasattr(st.session_state.analyzer, 'editar_mercado_categoria'):
-        old_data = st.session_state.analyzer
-        new_analyzer = MarketAnalyzer()
-        # Migração segura de dados
-        new_analyzer.cliente_data = getattr(old_data, 'cliente_data', {})
-        new_analyzer.mercado_categoria = getattr(old_data, 'mercado_categoria', {})
-        new_analyzer.mercado_subcategorias = getattr(old_data, 'mercado_subcategorias', {})
-        st.session_state.analyzer = new_analyzer
-        st.toast("🔄 Sistema atualizado para a versão de Inteligência 2.0", icon="🚀")
-
-# --- LÓGICA DE IMPORTAÇÃO EXCEL ---
-
-def processar_excel(file):
-    try:
-        temp_analyzer = MarketAnalyzer()
-        
-        # 1. Cliente
-        df_cliente = pd.read_excel(file, sheet_name="Cliente", header=None)
-        
-        def get_val_by_label(labels, default=""):
-            if isinstance(labels, str): labels = [labels]
-            for i in range(len(df_cliente)):
-                cell_val = str(df_cliente.iloc[i, 0]).strip().lower()
-                for label in labels:
-                    if label.lower() in cell_val:
-                        return df_cliente.iloc[i, 1]
-            return default
-
-        empresa = str(get_val_by_label(["Empresa", "Nome"], "Empresa Exemplo"))
-        cat_macro_cliente = str(get_val_by_label(["Categoria Macro", "Macro", "Categoria"], "Geral"))
-        ticket_medio = safe_float(get_val_by_label(["Ticket Médio Geral", "Ticket Médio"], 0))
-        margem = safe_float(get_val_by_label(["Margem Atual", "Margem"], 0))
-        fat_3m = safe_float(get_val_by_label(["Faturamento Médio 3M", "Faturamento"], 0))
-        uni_3m = int(safe_float(get_val_by_label(["Unidades Médias 3M", "Unidades"], 0)))
-        range_p = safe_float(get_val_by_label(["Range Permitido", "Range"], 0.20))
-        ticket_c = get_val_by_label(["Ticket Customizado", "Customizado"], None)
-        ticket_custom = safe_float(ticket_c) if pd.notna(ticket_c) and str(ticket_c).strip() != "" else None
-        
-        temp_analyzer.set_cliente_data(
-            empresa=empresa, categoria=cat_macro_cliente, ticket_medio=ticket_medio,
-            margem=margem, faturamento_3m=fat_3m, unidades_3m=uni_3m,
-            range_permitido=range_p, ticket_custom=ticket_custom
-        )
-        
-        # 2. Mercado Categoria
-        df_cat = pd.read_excel(file, sheet_name="Mercado_Categoria", skiprows=2)
-        
-        def find_col(df, possible_names):
-            for col in df.columns:
-                if any(name.lower() in str(col).lower() for name in possible_names):
-                    return col
-            return None
-
-        col_cat = find_col(df_cat, ["Categoria"])
-        col_per = find_col(df_cat, ["Periodo", "Período"])
-        col_fat = find_col(df_cat, ["Faturamento"])
-        col_uni = find_col(df_cat, ["Unidades"])
-
-        count_cat = 0
-        if col_cat and col_per:
-            for _, row in df_cat.iterrows():
-                if pd.notna(row[col_cat]) and pd.notna(row[col_per]):
-                    temp_analyzer.add_mercado_categoria(
-                        str(row[col_cat]), str(row[col_per]), 
-                        safe_float(row[col_fat]) if col_fat and col_fat in row and pd.notna(row[col_fat]) else 0, 
-                        int(safe_float(row[col_uni])) if col_uni and col_uni in row and pd.notna(row[col_uni]) else 0
-                    )
-                    count_cat += 1
-                
-        # 3. Mercado Subcategoria
-        df_sub = pd.read_excel(file, sheet_name="Mercado_Subcategoria", skiprows=2)
-        
-        col_sub_cat = find_col(df_sub, ["Categoria"])
-        col_sub_name = find_col(df_sub, ["Subcategoria"])
-        col_sub_fat = find_col(df_sub, ["Faturamento"])
-        col_sub_uni = find_col(df_sub, ["Unidades"])
-
-        count_sub = 0
-        if col_sub_cat and col_sub_name:
-            for _, row in df_sub.iterrows():
-                if pd.notna(row[col_sub_cat]) and pd.notna(row[col_sub_name]):
-                    temp_analyzer.add_mercado_subcategoria(
-                        str(row[col_sub_cat]), str(row[col_sub_name]), 
-                        safe_float(row[col_sub_fat]) if col_sub_fat and col_sub_fat in row and pd.notna(row[col_sub_fat]) else 0, 
-                        int(safe_float(row[col_sub_uni])) if col_sub_uni and col_sub_uni in row and pd.notna(row[col_sub_uni]) else 0
-                    )
-                    count_sub += 1
-        
-        st.session_state.analyzer = temp_analyzer
-        st.session_state['data_version'] = datetime.now().timestamp()
-        
-        detalhes = []
-        if fat_3m > 0: detalhes.append(f"Faturamento: {format_br(fat_3m)}")
-        if ticket_medio > 0: detalhes.append(f"Ticket: {format_br(ticket_medio)}")
-        
-        info_msg = f"✅ **{empresa}** importada com sucesso!\n\n"
-        info_msg += f"- 👤 Dados Cliente: {', '.join(detalhes) if detalhes else 'OK'}\n"
-        info_msg += f"- 📈 Categorias Macro: {count_cat} registros\n"
-        info_msg += f"- 🎯 Subcategorias: {count_sub} registros"
-        
-        st.session_state['last_upload_info'] = info_msg
+def _is_percent_col(col_name: str) -> bool:
+    c = str(col_name).strip().lower().replace("__", "_")
+    if c in _PERCENT_COLS:
         return True
-    except Exception as e:
-        st.error(f"❌ Erro no processamento: {str(e)}")
-        st.info("Dica: Verifique se as abas 'Cliente', 'Mercado_Categoria' e 'Mercado_Subcategoria' existem e seguem o modelo.")
+    # padrões comuns do app (ex: ctr_pct, cvr_campanha_pct, pct_invest_campanha)
+    return c.endswith("_pct") or c.startswith("pct_") or ("_pct_" in c)
+
+
+
+def _is_count_col(col_name: str) -> bool:
+    """
+    Apenas colunas de volume/contagem, para remover decimais.
+    Evita capturar colunas de conversao/taxa (Conv_Visitas_Vendas etc).
+    """
+    c = str(col_name).strip().lower().replace("__", "_")
+
+    # nunca formatar como inteiro se for conversao/taxa
+    if (
+        "conv_" in c
+        or c.startswith("con_")
+        or "convers" in c
+        or "cvr" in c
+        or "taxa" in c
+    ):
         return False
 
-# --- CSS CUSTOMIZADO DARK THEME ---
-st.markdown("""
-<style>
-    /* Reset e Base */
-    .stApp {
-        background-color: #000000 !important;
+    targets = {
+        "impressoes",
+        "impressões",
+        "impressions",
+        "cliques",
+        "clicks",
+        "visitas",
+        "visits",
+        "qtd_vendas",
+        "qtd vendas",
+        "quantidade_vendas",
+        "quantidade vendas",
+        "orders",
+        "pedidos",
+        "estoque",
+        "stock",
     }
-    
-    /* Azul Noite */
-    :root {
-        --accent-blue: #1E3A8A;
-        --accent-blue-hover: #1e40af;
-    }
-    
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 100%;
-    }
-    
-    /* Sidebar Customizada */
-    [data-testid="stSidebar"] {
-        background-color: #0a0a0a !important;
-        border-right: 1px solid #1a1a1a;
-    }
-    
-    [data-testid="stSidebar"] .stMarkdown {
-        color: #FFFFFF;
-    }
-    
-    /* Header Principal */
-    .main-header {
-        background: #0a0a0a;
-        border: 1px solid #1a1a1a;
-        border-radius: 20px;
-        padding: 2.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
-    }
-    
-    .main-header h1 {
-        color: #FFFFFF;
-        font-size: 2.5rem;
-        font-weight: bold;
-        text-transform: uppercase;
-        margin: 0;
-        letter-spacing: 2px;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    }
-    
-    .main-header p {
-        color: #A0A0A0;
-        font-size: 1.1rem;
-        margin: 0.5rem 0 0 0;
-    }
-    
-    /* Cards de Métricas */
-    .metric-card {
-        background: linear-gradient(135deg, #1a1a1a 0%, #262626 100%);
-        border: 1px solid #333333;
-        border-radius: 12px;
-        padding: 1.5rem;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        transition: transform 0.2s;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(30, 58, 138, 0.2);
-    }
-    
-    .metric-label {
-        font-size: 0.75rem;
-        color: #A0A0A0;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 0.5rem;
-        font-weight: 600;
-    }
-    
-    .metric-value {
-        font-size: 1.8rem;
-        font-weight: bold;
-        color: #FFFFFF;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    }
-    
-    /* Tabs Customizadas */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: transparent;
-        border-bottom: 2px solid #1a1a1a;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background-color: transparent;
-        border: none;
-        color: #A0A0A0;
-        font-size: 0.9rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        padding: 12px 24px;
-        font-weight: 600;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: transparent;
-        color: #1E3A8A;
-        border-bottom: 3px solid #1E3A8A;
-    }
-    
-    /* Insight Cards */
-    .insight-card {
-        background: linear-gradient(135deg, #1a1a1a 0%, #1e1e1e 100%);
-        border: 1px solid #333333;
-        border-left: 4px solid #1E3A8A;
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    }
-    
-    .insight-title {
-        font-size: 1.1rem;
-        font-weight: bold;
-        color: #FFFFFF;
-        margin-bottom: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
-    /* Formulários e Inputs */
-    .stTextInput input, .stNumberInput input, .stSelectbox select {
-        background-color: #1a1a1a !important;
-        border: 1px solid #333333 !important;
-        color: #FFFFFF !important;
-        border-radius: 8px;
-    }
-    
-    .stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus {
-        border-color: #1E3A8A !important;
-        box-shadow: 0 0 0 1px #1E3A8A !important;
-    }
-    
-    /* Botões */
-    .stButton button {
-        background: linear-gradient(135deg, #1E3A8A 0%, #1e40af 100%);
-        color: #FFFFFF;
-        border: none;
-        border-radius: 8px;
-        padding: 0.6rem 1.5rem;
-        font-weight: bold;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        transition: all 0.3s;
-    }
-    
-    .stButton button:hover {
-        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.4);
-        transform: translateY(-2px);
-    }
-    
-    /* Dataframes */
-    .stDataFrame {
-        background-color: #1a1a1a;
-        border: 1px solid #333333;
-        border-radius: 8px;
-    }
-    
-    /* Expanders */
-    .streamlit-expanderHeader {
-        background-color: #1a1a1a !important;
-        border: 1px solid #333333 !important;
-        border-radius: 8px !important;
-        color: #FFFFFF !important;
-    }
-    
-    /* File Uploader */
-    [data-testid="stFileUploader"] {
-        background-color: #1a1a1a;
-        border: 2px dashed #333333;
-        border-radius: 8px;
-        padding: 1rem;
-    }
-    
-    /* Texto Geral */
-    p, span, div, label {
-        color: #E0E0E0 !important;
-    }
-    
-    h1, h2, h3, h4, h5, h6 {
-        color: #FFFFFF !important;
-    }
-    
-    /* Scrollbar */
-    ::-webkit-scrollbar {
-        width: 10px;
-        height: 10px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: #0a0a0a;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: #333333;
-        border-radius: 5px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: #1E3A8A;
-    }
-</style>
-""", unsafe_allow_html=True)
 
-# --- SIDEBAR ---
-with st.sidebar:
-    # Logo e Título
-    st.markdown(f"""
-    <div style="text-align: center; padding: 1rem 0 2rem 0;">
-        <div style="width: 60px; height: 60px; background: #1a1a1a; border: 1px solid #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem auto;">
-            {SVG_ICONS["chart"]}
-        </div>
-        <div style="font-size: 1.2rem; font-weight: bold; color: #FFFFFF; text-transform: uppercase; letter-spacing: 3px;">
-            Inteligência de Mercado
-        </div>
-        <div style="font-size: 0.8rem; color: #A0A0A0; margin-top: 0.5rem; line-height: 1.4;">
-            Inteligência de dados aplicada à expansão do seu negócio.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Upload de Dados
-    st.markdown(f"""
-    <div style="margin-bottom: 1.5rem;">
-        <div style="display: flex; align-items: center; margin-bottom: 0.8rem;">
-            <div style="width: 32px; height: 32px; background: #1a1a1a; border: 1px solid #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                {SVG_ICONS["box"]}
-            </div>
-            <span style="font-size: 1rem; font-weight: bold; color: #FFFFFF; text-transform: uppercase; letter-spacing: 1px;">Upload de Dados</span>
-        </div>
-        <div style="font-size: 0.8rem; color: #A0A0A0; margin-left: 44px;">Mercado Livre ou Shopee</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    uploaded_file = st.file_uploader("Arraste ou selecione sua planilha", type=["xlsx"], key="excel_uploader_v5", label_visibility="collapsed")
-    if uploaded_file is not None:
-        if st.button("🚀 Processar Planilha", use_container_width=True):
-            if processar_excel(uploaded_file):
-                st.success("Dados carregados!")
-                st.rerun()
-    
-    if 'last_upload_info' in st.session_state:
-        st.info(st.session_state.last_upload_info)
-    
-    st.markdown("---")
-    
-    # Gerar Relatório
-    st.markdown(f"""
-    <div style="margin-bottom: 1.5rem;">
-        <div style="display: flex; align-items: center; margin-bottom: 0.8rem;">
-            <div style="width: 32px; height: 32px; background: #1a1a1a; border: 1px solid #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                {SVG_ICONS["file"]}
-            </div>
-            <span style="font-size: 1rem; font-weight: bold; color: #FFFFFF; text-transform: uppercase; letter-spacing: 1px;">Relatório Executivo</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    if c in targets:
+        return True
 
-    current_analyzer = st.session_state.analyzer
+    # casos com sufixo
+    if c.endswith("_impressoes") or c.endswith("_impressões") or c.endswith("_impressions"):
+        return True
+    if c.endswith("_cliques") or c.endswith("_clicks"):
+        return True
+    if c.endswith("_visitas") or c.endswith("_visits"):
+        return True
+    if "qtd_vendas" in c or "quantidade_vendas" in c:
+        return True
 
-    if st.button("Gerar Relatório PDF", use_container_width=True, key="pdf_button"):
-        if current_analyzer.cliente_data:
-            # Tentar obter o ranking para o PDF
-            df_rank_pdf = current_analyzer.gerar_ranking()
-            if not df_rank_pdf.empty:
-                with st.spinner("Gerando relatório..."):
-                    try:
-                        # Coletar dados de foco para o PDF
-                        cat_foco = st.session_state.get("selected_macro_cat")
-                        sub_foco = st.session_state.get("selected_sub_cat_foco")
-                        
-                        # Se não houver seleção no session_state, pega o primeiro do ranking
-                        if not sub_foco:
-                            sub_foco = df_rank_pdf.iloc[0]["Subcategoria"]
-                            cat_foco = df_rank_pdf.iloc[0]["Categoria Macro"]
-                            
-                        row_foco_pdf = df_rank_pdf[df_rank_pdf["Subcategoria"] == sub_foco].iloc[0]
-                        
-                        # Gerar imagens dos gráficos para o PDF
-                        chart_images = {}
-                        try:
-                            import io
-                            from PIL import Image
-                            
-                            # 1. Gauge Score
-                            fig_gauge = criar_gauge_score(row_foco_pdf['Score'], row_foco_pdf['Status'])
-                            # Tentativa 1: Kaleido
-                            try:
-                                chart_images['score_gauge'] = fig_gauge.to_image(format="png", engine="kaleido", width=600, height=400, scale=2)
-                            except:
-                                # Fallback: Se kaleido falhar, não geramos erro, o PDF tratará a ausência
-                                pass
-                            
-                            # 2. Comparação de Tickets
-                            r_perm = current_analyzer.cliente_data.get('range_permitido', 0.20)
-                            res_sim = current_analyzer.simular_cenarios(cat_foco, sub_foco)
-                            l_inf, l_sup = calcular_limites_ticket_local(res_sim['ticket_mercado'], r_perm)
-                            fig_ticket = criar_comparacao_tickets(res_sim['ticket_mercado'], row_foco_pdf['Ticket Cliente'], l_inf, l_sup)
-                            try:
-                                chart_images['ticket_comp'] = fig_ticket.to_image(format="png", engine="kaleido", width=600, height=400, scale=2)
-                            except:
-                                pass
-                        except Exception as img_err:
-                            st.warning(f"Aviso: Os gráficos serão exibidos apenas como texto no PDF devido a uma limitação técnica temporária.")
-                            chart_images = {}
+    return False
 
-                        pdf_gen = PDFReportGenerator(
-                            analyzer=current_analyzer,
-                            cliente_data=current_analyzer.cliente_data,
-                            cat_foco=cat_foco,
-                            sub_foco=sub_foco,
-                            row_foco=row_foco_pdf,
-                            chart_images=chart_images
-                        )
-                        pdf_buffer = pdf_gen.gerar_relatorio()
-                        st.download_button(
-                            label="📥 Download PDF",
-                            data=pdf_buffer,
-                            file_name=f"relatorio_mercado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
-                        st.success("✅ Relatório gerado com sucesso!")
-                    except Exception as e:
-                        st.error(f"Erro ao gerar PDF: {str(e)}")
-            else:
-                st.warning("É necessário ter subcategorias cadastradas para gerar o relatório.")
+
+# -------------------------
+# ACOS objetivo -> ROAS objetivo (inclui ACOS_Objetivo_N)
+# -------------------------
+def _acos_value_to_roas(ac):
+    if pd.isna(ac):
+        return pd.NA
+    try:
+        v = float(ac)
+    except Exception:
+        return pd.NA
+
+    if v == 0:
+        return pd.NA
+
+    # se vier como percentual (25, 30, 50), converte para fracao
+    acos_frac = v / 100 if v > 2 else v
+    if acos_frac <= 0:
+        return pd.NA
+
+    return 1 / acos_frac
+
+
+def _roas_col_name_from_acos_col(col_name: str) -> str:
+    lc = str(col_name).strip().lower().replace("__", "_")
+    if lc.endswith("_n") or "objetivo_n" in lc or "objetivo n" in lc:
+        return "ROAS objetivo N"
+    return "ROAS objetivo"
+
+
+def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converte TODAS as colunas que tenham "acos" e "objetivo":
+    - ACOS Objetivo -> ROAS objetivo
+    - ACOS_Objetivo_N -> ROAS objetivo N
+    Mantem ambas se existirem no dataframe.
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+
+    df2 = df.copy()
+    renames = {}
+
+    for col in list(df2.columns):
+        lc = str(col).strip().lower()
+        if "acos" in lc and "objetivo" in lc:
+            ser = pd.to_numeric(df2[col], errors="coerce")
+            df2[col] = ser.map(_acos_value_to_roas)
+            renames[col] = _roas_col_name_from_acos_col(col)
+
+    if renames:
+        df2 = df2.rename(columns=renames)
+
+    return df2
+
+
+# -------------------------
+# Formatacao unificada (Painel, CPI, Acoes)
+# -------------------------
+def format_table_br(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Regras:
+    - preserva colunas de texto (Nome da campanha, Acao_recomendada, etc)
+    - IDs: texto puro (somente digitos)
+    - dinheiro: R$ com separador BR
+    - percentuais: % com separador BR (e escala corrigida se vier 0-1)
+    - contagens: inteiros sem decimais (Impressoes, Cliques, Visitas, Qtd_Vendas)
+    - numeros gerais: 2 casas e separador BR
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+
+    df_fmt = df.copy()
+
+    for col in df_fmt.columns:
+        lc = str(col).strip().lower()
+
+        # IDs devem ser texto puro, sem formatacao numerica
+        if _is_id_col(col):
+            s = df_fmt[col].astype(str).replace({"nan": ""})
+            # remove .0, separadores e qualquer caractere nao numerico
+            s = s.str.replace(r"\.0$", "", regex=True)
+            s = s.str.replace(r"\D", "", regex=True)
+            df_fmt[col] = s
+            continue
+
+        # preserva texto por nome (blindagem)
+        if (
+            "nome" in lc
+            or "campanha" in lc
+            or "acao" in lc
+            or "ação" in lc
+            or "recomend" in lc
+            or "estrateg" in lc
+            or "estratég" in lc
+        ):
+            df_fmt[col] = df_fmt[col].astype(str).replace({"nan": ""})
+            continue
+
+        serie_num = pd.to_numeric(df_fmt[col], errors="coerce")
+        non_null = df_fmt[col].notna().sum()
+        num_ok = serie_num.notna().sum()
+
+        # se nao for numerica, preserva como texto
+        if non_null == 0 or (num_ok / max(non_null, 1)) < 0.60:
+            df_fmt[col] = df_fmt[col].astype(str).replace({"nan": ""})
+            continue
+
+        # ordem importa: percentual antes de contagem
+        if _is_money_col(col):
+            df_fmt[col] = serie_num.map(fmt_money_br)
+
+        elif _is_percent_col(col):
+            # Percentuais (Conv_Visitas_Vendas, CVR, Perdidas etc) já estão em pontos percentuais
+            # (ex: 1.19 significa 1,19%). Não aplicar auto-escala por heurística.
+            df_fmt[col] = serie_num.map(fmt_percent_br)
+
+        elif _is_count_col(col):
+            df_fmt[col] = serie_num.map(fmt_int_br)
+
         else:
-            st.warning("Adicione dados do cliente antes de gerar o relatório.")
+            df_fmt[col] = serie_num.map(lambda x: fmt_number_br(x, 2))
 
-# --- CONTEÚDO PRINCIPAL ---
+    return df_fmt
 
-analyzer = st.session_state.analyzer
 
-# Header Principal
-st.markdown(f"""
-<div class="main-header">
-    <div style="display: flex; align-items: center;">
-        <div style="width: 80px; height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin-right: 1.5rem;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-        </div>
-        <div>
-            <h1 style="margin: 0; font-size: 2.2rem; letter-spacing: 3px; font-weight: 800;">INTELIGÊNCIA DE MERCADO</h1>
-            <p style="margin: 0.5rem 0 0 0; font-size: 1rem; color: #A0A0A0; opacity: 0.8;">Inteligência de dados aplicada à expansão do seu negócio.</p>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# -------------------------
+# App
+# -------------------------
+def render_pareto_chart(df):
+    """Gera um gráfico de Pareto para a Receita das Campanhas."""
+    if df is None or df.empty or "Receita" not in df.columns:
+        return
+    
+    df_sorted = df.sort_values("Receita", ascending=False).copy()
+    df_sorted["Receita_Cum_Pct"] = 100 * df_sorted["Receita"].cumsum() / df_sorted["Receita"].sum()
+    
+    fig = go.Figure()
+    
+    # Barras de Receita
+    fig.add_trace(go.Bar(
+        x=df_sorted["Nome"],
+        y=df_sorted["Receita"],
+        name="Receita",
+        marker_color="#3483fa"
+    ))
+    
+    # Linha de Percentual Acumulado
+    fig.add_trace(go.Scatter(
+        x=df_sorted["Nome"],
+        y=df_sorted["Receita_Cum_Pct"],
+        name="% Acumulado",
+        yaxis="y2",
+        line=dict(color="#ffe600", width=3),
+        mode="lines+markers"
+    ))
+    
+    fig.update_layout(
+        title="Análise de Pareto: Receita por Campanha",
+        xaxis=dict(title="Campanha", showticklabels=False),
+        yaxis=dict(title="Receita (R$)"),
+        yaxis2=dict(title="% Acumulado", overlaying="y", side="right", range=[0, 110]),
+        template="plotly_dark",
+        margin=dict(l=20, r=20, t=40, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-# Navegação por Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "DASHBOARD",
-    "DADOS DO CLIENTE",
-    "GESTÃO DE CATEGORIAS",
-    "MERCADO SUBCATEGORIAS",
-    "ANÁLISE EXECUTIVA"
-])
+def render_treemap_chart(df):
+    """Gera um Treemap mostrando Investimento por Campanha, agrupado por Quadrante e colorido por ROAS."""
+    if df is None or df.empty or "Investimento" not in df.columns:
+        return
+    
+    df_plot = df[df["Investimento"] > 0].copy()
+    
+    # Preparar dados para o Treemap
+    df_plot["ROAS_Real"] = pd.to_numeric(df_plot.get("ROAS_Real", 0), errors="coerce").fillna(0)
+    df_plot["Quadrante"] = df_plot.get("Quadrante", "SEM_CLASSIFICACAO")
+    
+    # Criar figura com Treemap usando path e values
+    fig = px.treemap(
+        df_plot,
+        path=["Quadrante", "Nome"],
+        values="Investimento",
+        color="ROAS_Real",
+        color_continuous_scale="RdYlGn",
+        title="Alocacao de Investimento por Campanha (Tamanho = Investimento, Cor = ROAS)",
+        template="plotly_dark",
+        color_continuous_midpoint=5,
+        hover_name="Nome"
+    )
+    
+    fig.update_traces(textposition="middle center", textfont_size=10)
+    fig.update_layout(
+        margin=dict(l=20, r=20, t=40, b=20),
+        coloraxis_colorbar=dict(title="ROAS")
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-# ====================
-# TAB 1: DASHBOARD (INÍCIO)
-# ====================
-with tab1:
-    st.markdown(f"""
-    <div style="display: flex; align-items: center; margin-bottom: 1.5rem;">
-        <div style="width: 32px; height: 32px; background: #1a1a1a; border: 1px solid #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-        </div>
-        <h2 style="margin: 0;">Visão Geral do Sistema</h2>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Métricas Principais
-    total_categorias = len(analyzer.mercado_categoria)
-    total_subcategorias = sum(len(subs) for subs in analyzer.mercado_subcategorias.values())
-    
-    # Calcular totais
-    faturamento_total = 0
-    unidades_total = 0
-    
-    for cat_data in analyzer.mercado_categoria.values():
-        for periodo in cat_data:
-            faturamento_total += periodo.get('faturamento', 0)
-            unidades_total += periodo.get('unidades', 0)
-    
-    ticket_medio = faturamento_total / unidades_total if unidades_total > 0 else 0
-    
-    # Grid de Cards
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown(criar_metric_card(SVG_ICONS["box"], "CATEGORIAS MACRO", str(total_categorias)), unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(criar_metric_card(SVG_ICONS["dollar"], "FATURAMENTO TOTAL", f"R$ {format_br(faturamento_total)}"), unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(criar_metric_card(SVG_ICONS["chart"], "SUBCATEGORIAS", str(total_subcategorias)), unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(criar_metric_card(SVG_ICONS["target"], "TICKET MÉDIO", f"R$ {format_br(ticket_medio)}"), unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Informações do Cliente
-    if analyzer.cliente_data:
-        st.markdown(f"""
-        <div style="display: flex; align-items: center; margin: 2rem 0 1.5rem 0;">
-            <div style="width: 32px; height: 32px; background: #1a1a1a; border: 1px solid #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                {SVG_ICONS["user"]}
-            </div>
-            <h3 style="margin: 0;">Informações do Cliente</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col_info1, col_info2, col_info3 = st.columns(3)
-        
-        with col_info1:
-            st.markdown(f"""
-            <div class="insight-card">
-                <div class="insight-title">Empresa</div>
-                <div style="font-size: 1.3rem; color: #3b82f6;">{analyzer.cliente_data.get('empresa', 'N/A')}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_info2:
-            st.markdown(f"""
-            <div class="insight-card">
-                <div class="insight-title">Categoria</div>
-                <div style="font-size: 1.3rem; color: #3b82f6;">{analyzer.cliente_data.get('categoria_principal', analyzer.cliente_data.get('categoria', 'N/A'))}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_info3:
-            st.markdown(f"""
-            <div class="insight-card">
-                <div class="insight-title">Ticket Médio</div>
-                <div style="font-size: 1.3rem; color: #3b82f6;">R$ {format_br(analyzer.cliente_data.get('ticket_medio', 0))}</div>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info("📋 Configure os dados do cliente na aba 'DADOS DO CLIENTE' para começar a análise.")
-    
-    # Guia Rápido
-    st.markdown("---")
-    st.markdown("### 📖 Guia Rápido")
-    
-    with st.expander("Como usar este sistema"):
-        st.markdown("""
-        **Passo 1: Dados do Cliente**
-        Configure as informações básicas da sua empresa, incluindo ticket médio, margem e faturamento.
-        
-        **Passo 2: Gestão de Categorias**
-        Adicione dados históricos das categorias macro que você deseja analisar.
-        
-        **Passo 3: Mercado Subcategorias**
-        Cadastre as subcategorias específicas com dados de faturamento e unidades vendidas.
-        
-        **Passo 4: Análise Executiva**
-        Visualize o ranking automático, simulações de cenários e recomendações estratégicas.
-        
-        **Atalho: Importar Excel**
-        Use a sidebar para importar uma planilha Excel com todos os dados de uma vez.
-        """)
+def main():
+    st.set_page_config(page_title="Mercado Livre Ads", layout="wide", initial_sidebar_state="expanded")
 
-# ====================
-# TAB 2: DADOS DO CLIENTE
-# ====================
-with tab2:
-    st.markdown("## 👤 Configuração dos Dados do Cliente")
+    # Carregar CSS customizado
+    try:
+        with open(".streamlit/style.css") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning("Arquivo de estilo não encontrado. O dashboard será exibido com o tema padrão.")
+
+    # Seletor de Marketplace
+    with st.sidebar:
+        st.markdown("### 🏪 Selecionar Marketplace")
+        
+        marketplace_options = mkt.get_marketplace_list()
+        marketplace_labels = [f"{icon} {name}" for _, name, icon in marketplace_options]
+        marketplace_keys = [key for key, _, _ in marketplace_options]
+        
+        selected_marketplace = st.selectbox(
+            "Canal de Vendas",
+            options=marketplace_keys,
+            format_func=lambda x: f"{mkt.get_marketplace_config(x)['icon']} {mkt.get_marketplace_config(x)['name']}",
+            index=0,
+            label_visibility="collapsed"
+        )
+        
+        marketplace_config = mkt.get_marketplace_config(selected_marketplace)
+        
+        st.divider()
+        st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        st.divider()
     
-    with st.form("form_cliente"):
-        st.markdown("### Informações Básicas")
-        col1, col2 = st.columns(2)
-        empresa = col1.text_input("Nome da Empresa", value=analyzer.cliente_data.get('empresa', ''))
-        categoria = col2.text_input("Categoria Macro", value=analyzer.cliente_data.get('categoria', ''))
+    # Título dinâmico baseado no marketplace
+    st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
+
+    with st.sidebar:
+
+        st.subheader("📁 Arquivos Obrigatórios")
         
-        st.markdown("### Dados Financeiros")
-        col3, col4 = st.columns(2)
-        ticket_medio = col3.number_input("Ticket Médio (R$)", min_value=0.0, value=float(analyzer.cliente_data.get('ticket_medio', 0.0)), step=0.01)
-        margem = col4.number_input("Margem de Lucro (%)", min_value=0.0, max_value=100.0, value=float(analyzer.cliente_data.get('margem', 0.0) * 100), step=0.1) / 100
+        # Upload dinâmico baseado no marketplace
+        uploaded_files = {}
         
-        st.markdown("### Desempenho Recente (Últimos 3 Meses)")
-        col5, col6 = st.columns(2)
-        faturamento_3m = col5.number_input("Faturamento Médio (R$)", min_value=0.0, value=float(analyzer.cliente_data.get('faturamento_3m', 0.0)), step=0.01)
-        unidades_3m = col6.number_input("Unidades Vendidas", min_value=0, value=int(analyzer.cliente_data.get('unidades_3m', 0)), step=1)
-        
-        st.markdown("### Configurações Avançadas")
-        col7, col8 = st.columns(2)
-        range_permitido = col7.number_input("Range de Ticket Permitido (%)", min_value=0.0, max_value=100.0, value=float(analyzer.cliente_data.get('range_permitido', 0.20) * 100), step=1.0) / 100
-        ticket_custom = col8.number_input("Ticket Customizado (Opcional)", min_value=0.0, value=float(analyzer.cliente_data.get('ticket_custom', 0.0) if analyzer.cliente_data.get('ticket_custom') else 0.0), step=0.01)
-        
-        if st.form_submit_button("💾 Salvar Dados do Cliente", use_container_width=True):
-            analyzer.set_cliente_data(
-                empresa=empresa,
-                categoria=categoria,
-                ticket_medio=ticket_medio,
-                margem=margem,
-                faturamento_3m=faturamento_3m,
-                unidades_3m=unidades_3m,
-                range_permitido=range_permitido,
-                ticket_custom=ticket_custom if ticket_custom > 0 else None
+        if selected_marketplace == "mercado_livre":
+            organico_file = st.file_uploader("Relatorio de Desempenho de Anúncios (Excel)", type=["xlsx"])
+            patrocinados_file = st.file_uploader("Relatorio Anuncios Patrocinados (Excel)", type=["xlsx"])
+            campanhas_file = st.file_uploader("Relatorio de Campanha (Excel)", type=["xlsx"])
+            uploaded_files = {
+                "vendas": organico_file,
+                "patrocinados": patrocinados_file,
+                "campanha": campanhas_file
+            }
+        elif selected_marketplace == "shopee":
+            dados_gerais_file = st.file_uploader(
+                "Dados Gerais de Anúncios (CSV)",
+                type=["csv"],
+                help="Relatório de Todos os Anúncios CPC da Shopee"
             )
-            st.success("✅ Dados salvos com sucesso!")
-            st.rerun()
-    
-    # Resumo dos Dados
-    if analyzer.cliente_data:
-        st.markdown("---")
-        st.markdown("### 📊 Resumo dos Dados Configurados")
+            uploaded_files = {
+                "dados_gerais": dados_gerais_file
+            }
         
-        dados_resumo = {
-            "Campo": ["Empresa", "Categoria", "Ticket Médio", "Margem", "Faturamento 3M", "Unidades 3M"],
-            "Valor": [
-                analyzer.cliente_data.get('empresa', 'N/A'),
-                analyzer.cliente_data.get('categoria', 'N/A'),
-                f"R$ {format_br(analyzer.cliente_data.get('ticket_medio', 0))}",
-                f"{analyzer.cliente_data.get('margem', 0) * 100:.1f}%",
-                f"R$ {format_br(analyzer.cliente_data.get('faturamento_3m', 0))}",
-                str(analyzer.cliente_data.get('unidades_3m', 0))
-            ]
-        }
+        st.divider()
+        st.subheader("📂 Arquivos Opcionais")
         
-        df_resumo = pd.DataFrame(dados_resumo)
-        st.dataframe(df_resumo, use_container_width=True, hide_index=True)
-
-# ====================
-# TAB 3: GESTÃO DE CATEGORIAS
-# ====================
-with tab3:
-    st.markdown("## 📈 Gestão de Categorias Macro")
-    
-    with st.form("nova_categoria"):
-        st.markdown("### Adicionar Nova Categoria")
-        col1, col2 = st.columns(2)
-        cat_nome = col1.text_input("Nome da Categoria")
-        periodo = col2.text_input("Período (ex: 2024-01)")
-        
-        col3, col4 = st.columns(2)
-        faturamento = col3.text_input("Faturamento (R$)")
-        unidades = col4.text_input("Unidades Vendidas")
-        
-        if st.form_submit_button("➕ Adicionar Categoria", use_container_width=True):
-            if cat_nome and periodo:
-                analyzer.add_mercado_categoria(cat_nome, periodo, parse_large_number(faturamento), int(parse_large_number(unidades)))
-                st.success(f"✅ Categoria '{cat_nome}' adicionada!")
-                st.rerun()
+        if selected_marketplace == "mercado_livre":
+            snapshot_file = st.file_uploader(
+                "Snapshot de Referencia (Excel)",
+                type=["xlsx"],
+                help="Arquivo gerado ha 15 dias para comparar evolucao (Snapshot v2)"
+            )
+            uploaded_files["snapshot"] = snapshot_file
+            
+            usar_estoque = st.checkbox("Ativar visão de estoque", value=False)
+            estoque_file = st.file_uploader("Arquivo de estoque (Excel)", type=["xlsx"], disabled=not usar_estoque)
+            uploaded_files["estoque"] = estoque_file if usar_estoque else None
+            
+            if usar_estoque:
+                cA, cB, cC = st.columns(3)
+                with cA:
+                    estoque_min_ads = st.number_input("Mínimo p/ entrar em Ads (un)", min_value=0, value=6, step=1)
+                with cB:
+                    estoque_baixo = st.number_input("Estoque baixo (un)", min_value=0, value=6, step=1)
+                with cC:
+                    estoque_critico = st.number_input("Estoque crítico (un)", min_value=0, value=2, step=1)
+                tratar_estoque_vazio_como_zero = st.checkbox("Tratar estoque ausente como zero", value=False)
             else:
-                st.warning("Preencha pelo menos o nome e o período.")
-    
-    st.markdown("---")
-    st.markdown("### 📋 Categorias Cadastradas")
-    
-    if analyzer.mercado_categoria:
-        for cat, periodos in analyzer.mercado_categoria.items():
-            with st.expander(f"📁 {cat} ({len(periodos)} períodos)"):
-                df_cat = pd.DataFrame(periodos)
+                estoque_min_ads = 6
+                estoque_baixo = 6
+                estoque_critico = 2
+                tratar_estoque_vazio_como_zero = False
                 
-                if not df_cat.empty:
-                    df_cat['ticket_medio'] = df_cat.apply(
-                        lambda row: row['faturamento'] / row['unidades'] if row['unidades'] > 0 else 0,
-                        axis=1
+        elif selected_marketplace == "shopee":
+            palavras_chave_file = st.file_uploader(
+                "Relatório de Palavras-chave (CSV)",
+                type=["csv"],
+                help="Relatório de Anúncio + Palavra-chave + Locação (opcional)"
+            )
+            uploaded_files["palavras_chave"] = palavras_chave_file
+
+        st.divider()
+        st.subheader("Filtros de regra")
+
+        enter_visitas_min = st.number_input("Entrar em Ads: visitas mín", min_value=0, value=50, step=10)
+        enter_conv_min_pct = st.number_input(
+            "Entrar em Ads: conversão mín (%)",
+            min_value=0.0,
+            value=3.0,
+            step=0.5,
+            format="%.2f",
+        )
+        pause_invest_min = st.number_input(
+            "Pausar: investimento mín (R$)",
+            min_value=0.0,
+            value=20.0,
+            step=10.0,
+            format="%.2f",
+        )
+        pause_cvr_max_pct = st.number_input(
+            "Pausar: CVR máx (%)",
+            min_value=0.0,
+            value=1.5,
+            step=0.5,
+            format="%.2f",
+        )
+
+        # IMPORTANTE: Conv_Visitas_Vendas e CVR chegam em pontos percentuais (ex.: 1,82 vira 1.82).
+        enter_conv_min = enter_conv_min_pct
+        pause_cvr_max = pause_cvr_max_pct
+
+
+        st.divider()
+        st.subheader("Regras por anúncio (Ads)")
+
+        with st.expander("Ajustar regras de anúncio", expanded=False):
+            st.caption("Impressões, cliques e investimento são filtros de volume. CTR e CVR são referências médias de e-commerce, ajuste conforme seu nicho.")
+            ads_min_imp = st.number_input("Ads: impressões mín", min_value=0, value=500, step=100)
+            ads_min_clk = st.number_input("Ads: cliques mín", min_value=0, value=10, step=5)
+            ads_ctr_min_abs = st.number_input("Ads: CTR mín (%)  , referência 0,60%", min_value=0.0, value=0.60, step=0.05, format="%.2f")
+            ads_cvr_min = st.number_input("Ads: CVR mín (%)  , referência 1,00%", min_value=0.0, value=1.00, step=0.10, format="%.2f")
+            ads_pause_invest_min = st.number_input("Ads: investimento mín p/ pausar (R$)", min_value=0.0, value=20.0, step=10.0, format="%.2f")
+
+        # CTR e CVR acima são em pontos percentuais (ex.: 0,80 = 0.80%)
+        st.divider()
+        executar = st.button("Gerar relatório", use_container_width=True)
+        
+        # Checkbox para decidir se quer baixar o snapshot automaticamente (apenas Mercado Livre)
+        if selected_marketplace == "mercado_livre":
+            st.divider()
+            baixar_snapshot_auto = st.checkbox("Baixar Snapshot V2 automaticamente", value=True)
+        else:
+            baixar_snapshot_auto = False
+
+    # Validação de arquivos obrigatórios baseada no marketplace
+    if selected_marketplace == "mercado_livre":
+        if not (uploaded_files.get("vendas") and uploaded_files.get("patrocinados") and uploaded_files.get("campanha")):
+            st.info("📄 Envie os 3 arquivos obrigatórios do Mercado Livre na barra lateral para gerar o relatório.")
+            return
+    elif selected_marketplace == "shopee":
+        if not uploaded_files.get("dados_gerais"):
+            st.info("📄 Envie o arquivo de Dados Gerais de Anúncios da Shopee na barra lateral para gerar o relatório.")
+            return
+
+    if not executar:
+        st.warning("Quando estiver pronto, clique em Gerar relatório.")
+        return
+
+    try:
+        # Processamento condicional baseado no marketplace
+        if selected_marketplace == "mercado_livre":
+            # Processa arquivos do Mercado Livre
+            org = ml.load_organico(uploaded_files["vendas"])
+            pat = ml.load_patrocinados(uploaded_files["patrocinados"])
+
+            # Modo unico: consolidado
+            camp_raw = ml.load_campanhas_consolidado(uploaded_files["campanha"])
+            camp_agg = ml.build_campaign_agg(camp_raw, modo="consolidado")
+
+            kpis, pause, enter, scale, acos, camp_strat, ads_panel, ads_pausar, ads_vencedores, ads_otim_fotos, ads_otim_keywords, ads_otim_oferta = ml.build_tables(
+            org=org,
+            camp_agg=camp_agg,
+            pat=pat,
+            enter_visitas_min=int(enter_visitas_min),
+            enter_conv_min=float(enter_conv_min),
+            pause_invest_min=float(pause_invest_min),
+            pause_cvr_max=float(pause_cvr_max),
+            ads_min_imp=int(ads_min_imp) if ('ads_min_imp' in locals()) else 500,
+            ads_min_clk=int(ads_min_clk) if ('ads_min_clk' in locals()) else 10,
+            ads_ctr_min_abs=float(ads_ctr_min_abs) if ('ads_ctr_min_abs' in locals()) else 0.10,
+            ads_cvr_min=float(ads_cvr_min) if ('ads_cvr_min' in locals()) else 0.80,
+                ads_pause_invest_min=float(ads_pause_invest_min) if ('ads_pause_invest_min' in locals()) else 20.0,
+            )
+
+            # -------------------------
+            # Snapshot V2 - Carregamento e Comparação
+            # -------------------------
+            camp_snap, anuncio_snap, kpis_snap = ml.load_snapshot_v2(uploaded_files.get("snapshot"))
+        
+            camp_strat_comp = ml.compare_snapshots_campanha(camp_strat, camp_snap)
+            ads_panel_comp = ml.compare_snapshots_anuncio(ads_panel, anuncio_snap)
+            
+        elif selected_marketplace == "shopee":
+            # Processa arquivos da Shopee
+            resultado_shopee = shopee.processar_relatorio_shopee(
+                dados_gerais_file=uploaded_files["dados_gerais"],
+                palavras_chave_file=uploaded_files.get("palavras_chave")
+            )
+            
+            kpis = resultado_shopee["kpis"]
+            df_shopee_geral = resultado_shopee["df_geral"]
+            df_shopee_protecao = resultado_shopee["df_protecao"]
+            df_shopee_conversoes = resultado_shopee["df_conversoes"]
+            recomendacoes_shopee = resultado_shopee["recomendacoes"]
+            df_shopee_keywords = resultado_shopee.get("df_keywords", None)
+            
+            # Variáveis de compatibilidade (para evitar erros no código existente)
+            camp_strat_comp = df_shopee_protecao
+            ads_panel_comp = df_shopee_conversoes
+            camp_snap = None
+            anuncio_snap = None
+            
+            # Variáveis do Mercado Livre que não existem na Shopee
+            pause = pd.DataFrame()
+            enter = pd.DataFrame()
+            scale = pd.DataFrame()
+            acos = pd.DataFrame()
+            camp_strat = df_shopee_protecao
+            ads_panel = df_shopee_conversoes
+            ads_pausar = pd.DataFrame()
+            ads_vencedores = pd.DataFrame()
+            ads_otim_fotos = pd.DataFrame()
+            ads_otim_keywords = pd.DataFrame()
+            ads_otim_oferta = pd.DataFrame()
+
+        # -------------------------
+        # Snapshot V2 - Salvamento Automático (Mercado Livre)
+        # -------------------------
+        if selected_marketplace == "mercado_livre" and baixar_snapshot_auto:
+            try:
+                # Gera um nome de arquivo único
+                filename = f"snapshot_ml_ads_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                snapshot_path = os.path.join(os.getcwd(), filename)
+                # Passamos os KPIs globais para garantir paridade total no comparativo futuro
+                ml.save_snapshot_v2(camp_strat, ads_panel, snapshot_path, kpis_globais=kpis)
+                
+                # Para download automático no Streamlit, usamos o download_button 
+                # mas ele precisa ser clicado pelo usuário. 
+                # Como alternativa de "auto-download", exibimos ele com destaque no topo.
+                st.sidebar.success(f"Snapshot V2 preparado!")
+                st.sidebar.download_button(
+                    label="📥 CLIQUE AQUI PARA BAIXAR SNAPSHOT",
+                    data=open(snapshot_path, "rb").read(),
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="auto_download_btn"
+                )
+            except Exception as e:
+                st.sidebar.error(f"Erro ao preparar Snapshot: {e}")
+
+
+
+
+        # -------------------------
+        # Estoque (opcional) - ajuste apenas para exibicao (Mercado Livre)
+        # -------------------------
+        if selected_marketplace == "mercado_livre":
+            blocked_stock = pd.DataFrame()
+            pause_disp, enter_disp, scale_disp, acos_disp = pause, enter, scale, acos
+            camp_strat_disp = camp_strat_comp.copy()
+            ads_panel_disp = ads_panel_comp.copy()
+            if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
+                try:
+                    stock_df = load_stock_file(estoque_file)
+                    pause_disp = enrich_with_stock(pause_disp, stock_df)
+                    enter_disp = enrich_with_stock(enter_disp, stock_df)
+                    scale_disp = enrich_with_stock(scale_disp, stock_df)
+                    acos_disp  = enrich_with_stock(acos_disp, stock_df)
+                    enter_disp, scale_disp, acos_disp, pause_disp, blocked_stock = apply_stock_rules(
+                        enter_disp, scale_disp, acos_disp, pause_disp,
+                        estoque_min_ads=int(estoque_min_ads),
+                        estoque_baixo=int(estoque_baixo),
+                        estoque_critico=int(estoque_critico),
+                        tratar_estoque_vazio_como_zero=bool(tratar_estoque_vazio_como_zero),
                     )
-                    
-                    # Editar períodos
-                    st.markdown("#### ✏️ Editar Períodos")
-                    for i, row in df_cat.iterrows():
-                        with st.form(f"edit_cat_{cat}_{i}"):
-                            c1, c2, c3, c4 = st.columns(4)
-                            new_per = c1.text_input("Período", value=row['periodo'])
-                            new_fat = c2.text_input("Faturamento", value=str(row['faturamento']))
-                            new_uni = c3.text_input("Unidades", value=str(row['unidades']))
-                            
-                            b1, b2 = st.columns(2)
-                            if b1.form_submit_button("💾 Salvar"):
-                                analyzer.editar_mercado_categoria(cat, row['periodo'], new_per, parse_large_number(new_fat), int(parse_large_number(new_uni)))
-                                st.rerun()
-                            if b2.form_submit_button("🗑️ Excluir"):
-                                analyzer.remover_periodo_categoria(cat, row['periodo'])
-                                st.rerun()
-                    
-                    # Tabela de Dados
-                    st.markdown("#### 📊 Dados da Categoria")
-                    df_disp = df_cat.copy()
-                    df_disp['faturamento'] = df_disp['faturamento'].apply(format_br)
-                    df_disp['ticket_medio'] = df_disp['ticket_medio'].apply(format_br)
-                    st.dataframe(df_disp, use_container_width=True)
-                    
-                    # Visualizações
-                    st.markdown("#### 📈 Visualizações")
-                    tab_viz1, tab_viz2 = st.tabs(["Evolução da Categoria", "Ticket Médio"])
-                    with tab_viz1:
-                        st.plotly_chart(criar_grafico_evolucao_categoria(df_cat), use_container_width=True)
-                    with tab_viz2:
-                        st.plotly_chart(criar_grafico_ticket_medio(df_cat), use_container_width=True)
-    else:
-        st.info("Nenhuma categoria macro cadastrada.")
+                except Exception as e:
+                    st.warning(f"Não consegui aplicar a visão de estoque: {e}")
+        else:
+            # Shopee não tem estoque - criar variáveis vazias
+            blocked_stock = pd.DataFrame()
+            pause_disp = pd.DataFrame()
+            enter_disp = pd.DataFrame()
+            scale_disp = pd.DataFrame()
+            acos_disp = pd.DataFrame()
+            camp_strat_disp = camp_strat_comp.copy() if camp_strat_comp is not None else pd.DataFrame()
+            ads_panel_disp = ads_panel_comp.copy() if ads_panel_comp is not None else pd.DataFrame()
 
-# ====================
-# TAB 4: SUBCATEGORIAS
-# ====================
-with tab4:
-    st.markdown("## 🎯 Mercado de Subcategorias")
+    except Exception as e:
+        st.error("Erro ao processar os arquivos.")
+        st.exception(e)
+        return
+
+
     
-    categorias = list(analyzer.mercado_categoria.keys())
-    if not categorias:
-        st.warning("⚠️ Cadastre uma Categoria Macro primeiro na aba 'GESTÃO DE CATEGORIAS'!")
-    else:
-        cat_sel = st.selectbox("Selecione a Categoria Macro:", categorias)
+    # -------------------------
+    # KPIs - Liquid Glass Style (Dinâmico por Marketplace)
+    # -------------------------
+    lgc.render_glass_section_header(
+        "Indicadores Chave de Performance",
+        "Visão geral do desempenho das campanhas"
+    )
+
+    if selected_marketplace == "mercado_livre":
+        invest_ads = float(kpis.get("Investimento Ads (R$)", 0))
+        receita_ads = float(kpis.get("Receita Ads (R$)", 0))
+        roas_val = float(kpis.get("ROAS", 0))
+        tacos_val = float(kpis.get("TACOS", 0))
+        tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
+
+        # Renderiza KPIs do Mercado Livre
+        lgc.render_glass_kpi_row([
+            {
+                "icon": "💵",
+                "label": "INVESTIMENTO ADS",
+                "value": fmt_money_br(invest_ads)
+            },
+            {
+                "icon": "💰",
+                "label": "RECEITA ADS",
+                "value": fmt_money_br(receita_ads)
+            },
+            {
+                "icon": "📉",
+                "label": "ROAS",
+                "value": f"{fmt_number_br(roas_val, 2)}x"
+            },
+            {
+                "icon": "🎯",
+                "label": "TACOS",
+                "value": fmt_percent_br(tacos_pct)
+            }
+        ])
         
-        with st.form("nova_sub"):
-            st.markdown("### Adicionar Nova Subcategoria")
-            sub = st.text_input("Nome da Subcategoria")
-            col1, col2 = st.columns(2)
-            fat_6m = col1.text_input("Faturamento 6M (R$)")
-            uni_6m = col2.text_input("Unidades 6M")
-            
-            if st.form_submit_button("➕ Adicionar Subcategoria", use_container_width=True):
-                if sub:
-                    analyzer.add_mercado_subcategoria(cat_sel, sub, parse_large_number(fat_6m), int(parse_large_number(uni_6m)))
-                    st.success(f"✅ Subcategoria '{sub}' adicionada!")
-                    st.rerun()
-        
+        # Funil de Vendas (Mercado Livre)
         st.markdown("---")
+        impressoes_ml = int(camp_strat["Impressões"].sum()) if "Impressões" in camp_strat.columns else 0
+        cliques_ml = int(camp_strat["Cliques"].sum()) if "Cliques" in camp_strat.columns else 0
+        vendas_ml = int(camp_strat["Vendas"].sum()) if "Vendas" in camp_strat.columns else 0
         
-        if cat_sel in analyzer.mercado_subcategorias:
-            subcategorias_lista = analyzer.mercado_subcategorias[cat_sel]
+        funil_html_ml = sf.create_sales_funnel_html(impressoes_ml, cliques_ml, vendas_ml)
+        st.components.v1.html(funil_html_ml, height=480, scrolling=False)
+        
+    elif selected_marketplace == "shopee":
+        gmv_total = float(kpis.get("GMV Total", 0))
+        despesas = float(kpis.get("Despesas", 0))
+        roas_medio = float(kpis.get("ROAS Médio", 0))
+        roas_direto = float(kpis.get("ROAS Direto Médio", 0))
+        credito_protecao = float(kpis.get("Crédito Proteção Total", 0))
+        campanhas_protegidas = int(kpis.get("Campanhas com Proteção", 0))
+        
+        # Renderiza KPIs da Shopee
+        lgc.render_glass_kpi_row([
+            {
+                "icon": "💰",
+                "label": "GMV TOTAL",
+                "value": fmt_money_br(gmv_total)
+            },
+            {
+                "icon": "💵",
+                "label": "DESPESAS",
+                "value": fmt_money_br(despesas)
+            },
+            {
+                "icon": "📈",
+                "label": "ROAS MÉDIO",
+                "value": f"{fmt_number_br(roas_medio, 2)}x"
+            },
+            {
+                "icon": "🎯",
+                "label": "ROAS DIRETO",
+                "value": f"{fmt_number_br(roas_direto, 2)}x"
+            },
+            {
+                "icon": "🛡️",
+                "label": "CRÉDITO PROTEÇÃO",
+                "value": fmt_money_br(credito_protecao)
+            },
+            {
+                "icon": "✅",
+                "label": "CAMPANHAS PROTEGIDAS",
+                "value": str(campanhas_protegidas)
+            }
+        ])
+        
+        # Funil de Vendas (Shopee)
+        st.markdown("---")
+        impressoes_shopee = int(df_shopee_protecao["Impressões"].sum()) if "Impressões" in df_shopee_protecao.columns else 0
+        cliques_shopee = int(df_shopee_protecao["Cliques"].sum()) if "Cliques" in df_shopee_protecao.columns else 0
+        vendas_shopee = int(df_shopee_protecao["Itens Vendidos"].sum()) if "Itens Vendidos" in df_shopee_protecao.columns else 0
+        
+        funil_html_shopee = sf.create_sales_funnel_html(impressoes_shopee, cliques_shopee, vendas_shopee)
+        st.components.v1.html(funil_html_shopee, height=480, scrolling=False)
+
+    st.divider()
+
+    # -------------------------
+    # Gráficos de Análise (Mercado Livre)
+    # -------------------------
+    if selected_marketplace == "mercado_livre":
+        st.header("Análise Visual de Performance")
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            render_pareto_chart(camp_strat)
+        
+        with col_g2:
+            render_treemap_chart(camp_strat)
+
+        st.divider()
+    
+    # -------------------------
+    # Análise Shopee - Proteção de ROAS e Conversões
+    # -------------------------
+    elif selected_marketplace == "shopee":
+        st.header("🛡️ Análise de Proteção de ROAS")
+        
+        # Estatísticas de Proteção
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Campanhas Elegíveis",
+                campanhas_protegidas,
+                help="Campanhas com taxa de cumprimento de ROAS < 90%"
+            )
+        
+        with col2:
+            taxa_media = df_shopee_protecao['Taxa Cumprimento ROAS (%)'].mean()
+            st.metric(
+                "Taxa Média Cumprimento",
+                f"{taxa_media:.1f}%",
+                help="Taxa média de cumprimento de ROAS de todas as campanhas"
+            )
+        
+        with col3:
+            conversoes_totais = int(kpis.get("Conversões", 0))
+            st.metric(
+                "Conversões Totais",
+                conversoes_totais
+            )
+        
+        with col4:
+            conversoes_diretas = int(kpis.get("Conversões Diretas", 0))
+            pct_diretas = (conversoes_diretas / conversoes_totais * 100) if conversoes_totais > 0 else 0
+            st.metric(
+                "Conversões Diretas",
+                conversoes_diretas,
+                delta=f"{pct_diretas:.1f}% do total"
+            )
+        
+        st.divider()
+        
+        # Tabela de Campanhas com Proteção
+        with st.expander("🛡️ Campanhas Elegíveis para Proteção de ROAS", expanded=True):
+            df_elegiveis = df_shopee_protecao[df_shopee_protecao['Elegível Proteção']].copy()
             
-            st.markdown("### 📋 Lista de Subcategorias")
-            if not subcategorias_lista:
-                st.info("Nenhuma subcategoria cadastrada para esta categoria macro.")
+            if len(df_elegiveis) > 0:
+                # Seleciona colunas relevantes
+                colunas_exibir = [
+                    'Nome do Anúncio', 'Status', 'GMV', 'Despesas', 'ROAS',
+                    'ROAS Alvo', 'Taxa Cumprimento ROAS (%)', 'Crédito Potencial (R$)',
+                    'Status Proteção'
+                ]
+                colunas_disponiveis = [col for col in colunas_exibir if col in df_elegiveis.columns]
+                
+                st.dataframe(
+                    df_elegiveis[colunas_disponiveis],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                st.info(f"📊 Total de crédito potencial: **{fmt_money_br(credito_protecao)}**")
             else:
-                df_sub_raw = pd.DataFrame(subcategorias_lista)
-                
-                # Tabela de visualização
-                df_sub_disp = df_sub_raw.copy()
-                df_sub_disp['faturamento_6m'] = df_sub_disp['faturamento_6m'].apply(format_br)
-                df_sub_disp['ticket_medio'] = df_sub_disp['ticket_medio'].apply(format_br)
-                st.dataframe(df_sub_disp, use_container_width=True)
-                
-                st.markdown("#### ✏️ Editar Subcategorias")
-                for i, row in df_sub_raw.iterrows():
-                    with st.expander(f"Editar: {row['subcategoria']}"):
-                        with st.form(f"edit_sub_{cat_sel}_{i}"):
-                            c1, c2, c3 = st.columns(3)
-                            new_sub = c1.text_input("Nome Subcategoria", value=row['subcategoria'])
-                            new_fat = c2.text_input("Faturamento 6M (R$)", value=str(row['faturamento_6m']))
-                            new_uni = c3.text_input("Unidades 6M", value=str(row['unidades_6m']))
-                            
-                            b1, b2 = st.columns(2)
-                            if b1.form_submit_button("💾 Salvar Alterações"):
-                                analyzer.editar_mercado_subcategoria(cat_sel, row['subcategoria'], new_sub, parse_large_number(new_fat), int(parse_large_number(new_uni)))
-                                st.rerun()
-                            if b2.form_submit_button("🗑️ Excluir Subcategoria", type="secondary"):
-                                analyzer.remover_mercado_subcategoria(cat_sel, row['subcategoria'])
-                                st.rerun()
-
-# ====================
-# TAB 5: ANÁLISE EXECUTIVA (DASHBOARD)
-# ====================
-with tab5:
-    st.markdown("## 📊 Análise Executiva e Simulações")
-    
-    df_ranking = analyzer.gerar_ranking()
-    if df_ranking.empty:
-        st.info("📋 Importe ou adicione dados nas abas anteriores para visualizar a análise executiva.")
-    else:
-        # Ranking de Oportunidades
-        col_rank1, col_rank2 = st.columns([1, 1])
-        with col_rank1:
-            st.markdown("### 🏆 Ranking de Oportunidades")
-            df_display = df_ranking[['Categoria Macro', 'Subcategoria', 'Score', 'Status']].copy()
-            st.dataframe(df_display, use_container_width=True)
-        with col_rank2:
-            st.plotly_chart(criar_grafico_ranking_subcategorias(df_ranking), use_container_width=True)
+                st.success("✅ Nenhuma campanha elegível para proteção. Todas estão com ROAS acima de 90% da meta!")
         
-        st.markdown("---")
+        st.divider()
         
-        # Análise Detalhada
-        sub_foco_dashboard = st.selectbox("Selecione uma Subcategoria para Análise Detalhada:", df_ranking["Subcategoria"].tolist(), key="dashboard_sub_foco_selector")
-        st.session_state["selected_sub_cat_foco"] = sub_foco_dashboard
-        
-        row_foco = df_ranking[df_ranking["Subcategoria"] == sub_foco_dashboard].iloc[0]
-        st.session_state["selected_macro_cat"] = row_foco["Categoria Macro"]
-        
-        # Simulação de Cenários
-        st.markdown("### 💰 Simulação de Cenários")
-        
-        with st.expander("⚙️ Ajustar Metas de Share", expanded=False):
-            col_s1, col_s2, col_s3 = st.columns(3)
-            s_cons = col_s1.slider("Share Conservador (%)", 0.0, 5.0, 0.2, 0.1) / 100
-            s_prov = col_s2.slider("Share Provável (%)", 0.0, 10.0, 0.5, 0.1) / 100
-            s_otim = col_s3.slider("Share Otimista (%)", 0.0, 20.0, 1.0, 0.1) / 100
-        
-        custom_shares = {
-            'Conservador': {'share_alvo': s_cons, 'label': f"{s_cons*100:.1f}%"},
-            'Provável': {'share_alvo': s_prov, 'label': f"{s_prov*100:.1f}%"},
-            'Otimista': {'share_alvo': s_otim, 'label': f"{s_otim*100:.1f}%"}
-        }
-        
-        res = analyzer.simular_cenarios(row_foco['Categoria Macro'], sub_foco_dashboard, custom_shares)
-        
-        # Cards de Indicadores
-        st.markdown("#### 📈 Indicadores de Market Share")
-        m1, m2, m3, m4, m5 = st.columns(5)
-        
-        share_atual_calc = analyzer.calcular_share_atual(res['mercado_6m'])
-        
-        with m1:
-            st.markdown(criar_metric_card("💼", "Tamanho Mercado (6M)", f"R$ {format_br(res['mercado_6m'])}"), unsafe_allow_html=True)
-        with m2:
-            st.markdown(criar_metric_card("📊", "Seu Share Atual", f"{share_atual_calc:.2f}%"), unsafe_allow_html=True)
-        with m3:
-            share_alvo = custom_shares['Provável']['share_alvo'] * 100
-            st.markdown(criar_metric_card("🎯", "Meta de Share", f"{share_alvo:.1f}%"), unsafe_allow_html=True)
-        with m4:
-            st.markdown(criar_metric_card("💰", "Ticket Mercado", f"R$ {format_br(res['ticket_mercado'])}"), unsafe_allow_html=True)
-        with m5:
-            st.markdown(criar_metric_card("📈", "Sua Margem", f"{analyzer.cliente_data.get('margem', 0)*100:.1f}%"), unsafe_allow_html=True)
-        
-        # Gráficos de Score e Ticket
-        g1, g2 = st.columns(2)
-        with g1:
-            st.plotly_chart(criar_gauge_score(row_foco['Score'], row_foco['Status']), use_container_width=True)
-        with g2:
-            r_perm = analyzer.cliente_data.get('range_permitido', 0.20)
-            l_inf, l_sup = calcular_limites_ticket_local(res['ticket_mercado'], r_perm)
-            st.plotly_chart(criar_comparacao_tickets(res['ticket_mercado'], row_foco['Ticket Cliente'], l_inf, l_sup), use_container_width=True)
-        
-        # Projeções de Receita e Lucro
-        st.markdown("#### 📈 Projeções de Receita e Lucro")
-        df_cen = res['cenarios'].copy()
-        
-        c_tab1, c_tab2 = st.tabs(["Tabela de Dados", "Gráfico Comparativo"])
-        with c_tab1:
-            df_disp_cen = df_cen.copy()
-            df_disp_cen['Receita Projetada 6M'] = df_disp_cen['Receita Projetada 6M'].apply(format_br)
-            df_disp_cen['Lucro Projetado 6M'] = df_disp_cen['Lucro Projetado 6M'].apply(format_br)
-            df_disp_cen['Delta vs Atual'] = df_disp_cen['Delta vs Atual'].apply(format_br)
-            df_disp_cen['Crescimento (%)'] = df_disp_cen['Crescimento (%)'].apply(lambda x: f"{x:,.1f}%".replace(",", "X").replace(".", ",").replace("X", "."))
-            st.dataframe(df_disp_cen, use_container_width=True)
-        with c_tab2:
-            st.plotly_chart(criar_grafico_cenarios(df_cen), use_container_width=True)
-        
-        # Tendência e Projeção
-        st.markdown("---")
-        st.markdown("### 📈 Tendência e Projeção de Demanda")
-        
-        confianca = analyzer.calcular_confianca(row_foco['Categoria Macro'], sub_foco_dashboard)
-        cor_conf = "green" if confianca['nivel'] == "Alta" else ("orange" if confianca['nivel'] == "Média" else "red")
-        
-        st.markdown(f"**Índice de Confiança da Projeção:** <span style='color:{cor_conf}; font-weight:bold;'>{confianca['score']}% ({confianca['nivel']})</span>", unsafe_allow_html=True)
-        
-        if confianca['motivos']:
-            with st.expander("Ver detalhes da confiabilidade"):
-                for m in confianca['motivos']:
-                    st.write(f"• {m}")
-        
-        tendencia_res = analyzer.calcular_tendencia(row_foco['Categoria Macro'])
-        
-        t_col1, t_col2, t_col3 = st.columns([1, 1, 2])
-        with t_col1:
-            st.metric("Tendência Atual", tendencia_res['tendencia'], delta=f"{tendencia_res['crescimento_mensal']:.1f}% mensal")
-        with t_col2:
-            st.metric("Projeção Total (3 Meses)", f"R$ {format_br(tendencia_res['projecao_3m'])}")
-        with t_col3:
-            meses = ["Mês 1", "Mês 2", "Mês 3"]
-            valores = tendencia_res.get('mensal', [0, 0, 0])
-            df_proj = pd.DataFrame({"Mês": meses, "Faturamento": valores})
+        # Análise de Conversões Diretas
+        with st.expander("🎯 Análise de Conversões Diretas vs Totais", expanded=False):
+            colunas_conversoes = [
+                'Nome do Anúncio', 'Conversões', 'Conversões Diretas',
+                '% Conversões Diretas', 'Qualidade Atribuição',
+                'GMV', 'Receita direta', 'ROAS', 'ROAS Direto'
+            ]
+            colunas_conv_disponiveis = [col for col in colunas_conversoes if col in df_shopee_conversoes.columns]
             
-            # Calcular um range seguro para o eixo Y não cortar o texto
-            max_val = max(valores) if valores else 0
-            y_range = [0, max_val * 1.25] if max_val > 0 else [0, 100]
-
-            fig_proj = px.bar(df_proj, x="Mês", y="Faturamento",
-                             text=[f"R$ {format_br(v)}" for v in valores],
-                             title="Projeção Mensal Detalhada",
-                             color_discrete_sequence=["#1E3A8A"])
-            
-            fig_proj.update_traces(
-                textposition='outside',
-                textfont=dict(size=11, color='#FFFFFF'),
-                cliponaxis=False  # Garante que o texto não seja cortado pelas bordas
+            st.dataframe(
+                df_shopee_conversoes[colunas_conv_disponiveis],
+                use_container_width=True,
+                hide_index=True
             )
-            
-            fig_proj.update_layout(
-                height=300, # Aumentado levemente para melhor respiro
-                margin=dict(l=10, r=10, t=50, b=10), # Mais margem no topo para o título e valores
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#FFFFFF'),
-                yaxis=dict(
-                    range=y_range,
-                    showgrid=True,
-                    gridcolor='rgba(255,255,255,0.1)',
-                    zeroline=True,
-                    zerolinecolor='rgba(255,255,255,0.2)'
-                ),
-                xaxis=dict(showgrid=False)
-            )
-            st.plotly_chart(fig_proj, use_container_width=True)
         
-        # Plano de Ação
-        st.markdown("---")
-        st.markdown("### 🧠 Plano de Ação Sugerido")
-        plano = analyzer.gerar_plano_acao(row_foco['Categoria Macro'])
-        sub_plano = next((p for p in plano if p['Subcategoria'] == sub_foco_dashboard), None)
+        st.divider()
         
-        if sub_plano:
-            lista_acoes = sub_plano.get('Ações', [])
-            if not lista_acoes and 'Recomendação' in sub_plano:
-                lista_acoes = [sub_plano['Recomendação']]
-            
-            acoes_html = "".join([f"<li style='margin-bottom: 8px;'>{acao}</li>" for acao in lista_acoes])
-            
-            st.markdown(f"""
-            <div class="insight-card" style="border-left-color: {sub_plano.get('Cor', '#1E3A8A')};">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <span style="font-size: 1.3rem; font-weight: bold; color: {sub_plano.get('Cor', '#1E3A8A')};">🎯 Prioridade: {sub_plano.get('Prioridade', 'N/A')}</span>
-                    <span style="background-color: {sub_plano.get('Cor', '#1E3A8A')}; color: #FFFFFF; padding: 4px 12px; border-radius: 15px; font-size: 0.9rem; font-weight: bold;">Score: {sub_plano.get('Score', 0):.2f}</span>
-                </div>
-                <ul style="list-style-type: none; padding-left: 0; font-size: 1.1rem; color: #E0E0E0;">
-                    {acoes_html}
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.warning("Não foi possível gerar recomendações para esta subcategoria.")
+        # Recomendações
+        st.header("💡 Recomendações Estratégicas")
         
-        # Insights dos Cenários
-        st.markdown("### 💡 Insights dos Cenários")
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🛡️ Ativar Proteção",
+            "🔧 Otimizar ROAS",
+            "🚀 Escalar GMV",
+            "⚠️ Pausar/Revisar"
+        ])
         
-        fat_base_3m = float(analyzer.cliente_data.get('faturamento_3m', 0))
-        if fat_base_3m == 0:
-            st.warning("⚠️ Seu faturamento atual está zerado nos 'Dados do Cliente'. As porcentagens de crescimento podem não refletir a realidade.")
+        with tab1:
+            if len(recomendacoes_shopee["ativar_protecao"]) > 0:
+                st.subheader("Campanhas para Ativar Proteção de ROAS")
+                for rec in recomendacoes_shopee["ativar_protecao"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - Despesas: {fmt_money_br(rec['despesas'])}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.info("✅ Nenhuma campanha precisa ativar proteção no momento.")
         
-        i_col1, i_col2, i_col3 = st.columns(3)
+        with tab2:
+            if len(recomendacoes_shopee["otimizar_roas"]) > 0:
+                st.subheader("Campanhas para Otimizar ROAS")
+                for rec in recomendacoes_shopee["otimizar_roas"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - Conversões: {rec['conversoes']}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.info("✅ Nenhuma campanha precisa de otimização urgente.")
         
-        with i_col1:
-            row = df_cen.iloc[0]
-            c_val = row['Crescimento (%)']
-            c_color = "#2ecc71" if c_val > 0 else ("#e74c3c" if c_val < 0 else "#A0A0A0")
-            st.markdown(f"""
-            <div class="insight-card" style="border-left-color: #2ecc71;">
-                <div class="insight-title">🟢 Cenário Conservador</div>
-                • Receita: R$ {format_br(row['Receita Projetada 6M'])}<br>
-                • Lucro: R$ {format_br(row['Lucro Projetado 6M'])}<br>
-                • Crescimento: <span style="color: {c_color}; font-weight: bold;">{c_val:,.1f}%</span>
-            </div>
-            """, unsafe_allow_html=True)
+        with tab3:
+            if len(recomendacoes_shopee["escalar_gmv"]) > 0:
+                st.subheader("Oportunidades de Escalar GMV")
+                for rec in recomendacoes_shopee["escalar_gmv"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - GMV: {fmt_money_br(rec['gmv'])}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.info("🔍 Nenhuma oportunidade de escala identificada no momento.")
         
-        with i_col2:
-            row = df_cen.iloc[1]
-            c_val = row['Crescimento (%)']
-            c_color = "#2ecc71" if c_val > 0 else ("#e74c3c" if c_val < 0 else "#A0A0A0")
-            st.markdown(f"""
-            <div class="insight-card" style="border-left-color: #f1c40f;">
-                <div class="insight-title">🟡 Cenário Provável</div>
-                • Receita: R$ {format_br(row['Receita Projetada 6M'])}<br>
-                • Lucro: R$ {format_br(row['Lucro Projetado 6M'])}<br>
-                • Crescimento: <span style="color: {c_color}; font-weight: bold;">{c_val:,.1f}%</span>
-            </div>
-            """, unsafe_allow_html=True)
+        with tab4:
+            if len(recomendacoes_shopee["pausar_revisar"]) > 0:
+                st.subheader("⚠️ Campanhas para Pausar ou Revisar")
+                for rec in recomendacoes_shopee["pausar_revisar"]:
+                    st.markdown(f"""
+                    **{rec['campanha']}**
+                    - ROAS Atual: {rec['roas_atual']:.2f}x
+                    - Despesas: {fmt_money_br(rec['despesas'])}
+                    - Conversões: {rec['conversoes']}
+                    - Motivo: {rec['motivo']}
+                    """)
+                    st.divider()
+            else:
+                st.success("✅ Nenhuma campanha precisa ser pausada.")
         
-        with i_col3:
-            row = df_cen.iloc[2]
-            c_val = row['Crescimento (%)']
-            c_color = "#2ecc71" if c_val > 0 else ("#e74c3c" if c_val < 0 else "#A0A0A0")
-            st.markdown(f"""
-            <div class="insight-card" style="border-left-color: #e74c3c;">
-                <div class="insight-title">🔴 Cenário Otimista</div>
-                • Receita: R$ {format_br(row['Receita Projetada 6M'])}<br>
-                • Lucro: R$ {format_br(row['Lucro Projetado 6M'])}<br>
-                • Crescimento: <span style="color: {c_color}; font-weight: bold;">{c_val:,.1f}%</span>
-            </div>
-            """, unsafe_allow_html=True)
+        st.divider()
 
-        # ==========================================
-        # NOVO: DASHBOARD DE ANOMALIAS E OPORTUNIDADES
-        # ==========================================
-        st.markdown("---")
-        st.markdown("### 🚨 Dashboard de Anomalias e Oportunidades")
+    # -------------------------
+    # Painel geral (Mercado Livre)
+    # -------------------------
+    if selected_marketplace == "mercado_livre":
+        with st.expander("Painel Geral de Campanhas", expanded=True):
+            panel_raw = ml.build_control_panel(camp_strat)
+            panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
+            panel_view = prepare_df_for_view(panel_raw, drop_cpi_cols=True, drop_roas_generic=False)
+            st.dataframe(format_table_br(panel_view), use_container_width=True)
+
+        st.divider()
+
+        # -------------------------
+        # Matriz CPI
+        # -------------------------
+        with st.expander("Matriz CPI (Oportunidades de Otimização)", expanded=False):
+            cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
+            # Visao limpa (sem alterar calculos): esconder colunas auxiliares, remover duplicidades e alinhar ROAS/ACOS
+            cpi_view = prepare_df_for_view(cpi_raw, drop_cpi_cols=True, drop_roas_generic=True)
+            st.dataframe(format_table_br(cpi_view), use_container_width=True)
+
+        st.divider()
+
+        # -------------------------
+        # Nível de anúncio (Patrocinados)
+        # -------------------------
+        with st.expander("📄 Análise Tática por Anúncio (Ads)", expanded=False):
+            if ads_panel is None or (hasattr(ads_panel, "empty") and ads_panel.empty):
+                st.info("Sem dados de anúncios patrocinados para analisar.")
+            else:
+                # KPIs rápidos do bloco
+                total_ads = int(len(ads_panel))
+                n_pausar = int(len(ads_pausar)) if ads_pausar is not None else 0
+                n_vencedores = int(len(ads_vencedores)) if ads_vencedores is not None else 0
+                n_fotos = int(len(ads_otim_fotos)) if ads_otim_fotos is not None else 0
+                n_kw = int(len(ads_otim_keywords)) if ads_otim_keywords is not None else 0
+                n_oferta = int(len(ads_otim_oferta)) if ads_otim_oferta is not None else 0
+
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
+                c1.metric("Total Anúncios", total_ads)
+                c2.metric("🏆 Vencedores", n_vencedores)
+                c3.metric("🛑 Pausar", n_pausar)
+                c4.metric("📸 Fotos/Clips", n_fotos)
+                c5.metric("⌨️ Keywords", n_kw)
+                c6.metric("🏷️ Oferta", n_oferta)
+
+                st.divider()
+
+                tab_pausar, tab_vencedores, tab_otim, tab_completo = st.tabs([
+                    "🛑 Pausar", "🏆 Vencedores", "🔧 Otimização", "📊 Painel Completo"
+                ])
+
+                with tab_pausar:
+                    st.subheader("Anúncios para pausar (refino de campanha)")
+                    ads_pausar_view = prepare_df_for_view(ads_pausar, drop_cpi_cols=True, drop_roas_generic=False) if ads_pausar is not None else pd.DataFrame()
+                    st.dataframe(format_table_br(ads_pausar_view), use_container_width=True)
+
+                with tab_vencedores:
+                    st.subheader("Anúncios vencedores (preservar)")
+                    ads_vencedores_view = prepare_df_for_view(ads_vencedores, drop_cpi_cols=True, drop_roas_generic=False) if ads_vencedores is not None else pd.DataFrame()
+                    st.dataframe(format_table_br(ads_vencedores_view), use_container_width=True)
+
+                with tab_otim:
+                    st.subheader("Anúncios para otimização")
+                    t1, t2, t3 = st.tabs(["📸 Fotos e Clips", "⌨️ Palavras-chave", "🏷️ Oferta"])
+                    with t1:
+                        v = prepare_df_for_view(ads_otim_fotos, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_fotos is not None else pd.DataFrame()
+                        st.dataframe(format_table_br(v), use_container_width=True)
+                    with t2:
+                        v = prepare_df_for_view(ads_otim_keywords, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_keywords is not None else pd.DataFrame()
+                        st.dataframe(format_table_br(v), use_container_width=True)
+                    with t3:
+                        v = prepare_df_for_view(ads_otim_oferta, drop_cpi_cols=True, drop_roas_generic=False) if ads_otim_oferta is not None else pd.DataFrame()
+                        st.dataframe(format_table_br(v), use_container_width=True)
+
+                with tab_completo:
+                    st.subheader("Painel completo por anúncio")
+                    ads_view = prepare_df_for_view(ads_panel, drop_cpi_cols=True, drop_roas_generic=False)
+                    st.dataframe(format_table_br(ads_view), use_container_width=True)
+
+    # -------------------------
+    # Plano de Ação 15 Dias (Mercado Livre)
+    # -------------------------
+    if selected_marketplace == "mercado_livre":
+        st.header("📅 Plano de Ação Estratégico (15 Dias)")
+        st.info("Este plano respeita a janela de 7 dias do algoritmo do Mercado Livre. Não faça alterações nas mesmas campanhas em intervalos menores que uma semana.")
         
-        anomalias = analyzer.identificar_anomalias(row_foco['Categoria Macro'])
+        plan15 = ml.build_15_day_plan(camp_strat)
+        if not plan15.empty:
+            # Estilização básica para o plano
+            def color_fase(val):
+                if "Semana 1" in str(val): return "color: #3483fa; font-weight: bold"
+                if "Semana 2" in str(val): return "color: #ffe600; font-weight: bold"
+                return ""
         
-        if anomalias:
-            anom_col1, anom_col2 = st.columns([2, 1])
-            with anom_col1:
-                for anom in anomalias:
-                    cor_sev = "#FF4B4B" if anom['severidade'] == "Alta" else ("#FFA421" if anom['severidade'] == "Média" else "#1E3A8A")
-                    st.markdown(f"""
-                    <div class="insight-card" style="border-left-color: {cor_sev};">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <span style="font-weight: bold; color: #FFFFFF; font-size: 1.1rem;">{anom['tipo']}</span>
-                            <span style="background-color: {cor_sev}; color: #FFFFFF; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold;">{anom['severidade']}</span>
-                        </div>
-                        <div style="color: #E0E0E0; font-size: 1rem;">
-                            <strong>{anom['subcategoria']}</strong><br>
-                            {anom['mensagem']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            with anom_col2:
-                st.metric("Total de Anomalias", len(anomalias), delta="Críticas detectadas")
+            st.dataframe(
+                    plan15.style.applymap(color_fase, subset=["Fase"]),
+                    use_container_width=True,
+                    hide_index=True
+            )
         else:
-            st.success("✅ Nenhuma anomalia crítica detectada. Seu portfólio está bem equilibrado!")
+            st.write("Nenhuma ação necessária para o período atual.")
+
+        st.divider()
+
+    # -------------------------
+    # Ações Recomendadas (Mercado Livre)
+    # -------------------------
+    if selected_marketplace == "mercado_livre":
+        pause_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(pause_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        pause_fmt = format_table_br(pause_view)
+        enter_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(enter_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        enter_fmt = format_table_br(enter_view)
+        scale_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(scale_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        scale_fmt = format_table_br(scale_view)
+        acos_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(acos_disp), drop_cpi_cols=True, drop_roas_generic=False)
+        acos_fmt = format_table_br(acos_view)
+
+        st.header("📄 Ações Recomendadas por Categoria")
         
-        # ==========================================
-        # NOVO: MATRIZ DE RECOMENDAÇÃO AUTOMÁTICA (AÇÃO IMEDIATA)
-        # ==========================================
-        st.markdown("---")
-        st.markdown("### 🎯 Matriz de Recomendação Automática (Ação Imediata)")
+        tab_pausar, tab_entrar, tab_escalar, tab_roas = st.tabs([
+            "🛑 Pausar/Revisar", "✅ Entrar em Ads", "🚀 Escalar Orçamento", "⬇️ Baixar ROAS Objetivo"
+    ])
+
+        with tab_pausar:
+            st.subheader("🛑 Campanhas para pausar ou revisar")
+            st.info("Campanhas com ROAS baixo ou investimento sem retorno.")
+            st.dataframe(pause_fmt, use_container_width=True)
         
-        plano_completo = analyzer.gerar_plano_acao(row_foco['Categoria Macro'])
-        
-        if plano_completo:
-            # Criar uma tabela visual das recomendações
-            rec_data = []
-            for rec in plano_completo:
-                rec_data.append({
-                    "Subcategoria": rec['Subcategoria'],
-                    "Prioridade": rec['Prioridade'],
-                    "Recomendação": rec['Recomendacao_Curta'],
-                    "Ação Imediata": rec['Acao_Imediata']
-                })
-            
-            df_rec = pd.DataFrame(rec_data)
-            
-            # Exibir em colunas para melhor visualização
-            for idx, rec in enumerate(plano_completo):
-                if idx % 2 == 0:
-                    rec_col1, rec_col2 = st.columns(2)
-                
-                col_target = rec_col1 if idx % 2 == 0 else rec_col2
-                
-                with col_target:
-                    st.markdown(f"""
-                    <div class="insight-card" style="border-left-color: {rec['Cor']}; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <span style="font-weight: bold; color: #FFFFFF; font-size: 1.1rem;">{rec['Subcategoria']}</span>
-                            <span style="background-color: {rec['Cor']}; color: #FFFFFF; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; font-weight: bold;">{rec['Prioridade']}</span>
-                        </div>
-                        <div style="margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px;">
-                            <div style="color: #A0A0A0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Recomendação</div>
-                            <div style="color: #FFFFFF; font-weight: bold; font-size: 1rem;">{rec['Recomendacao_Curta']}</div>
-                        </div>
-                        <div style="padding: 10px; background: rgba({rec['Cor'].lstrip('#')}, 0.1); border-radius: 8px; border-left: 3px solid {rec['Cor']};">
-                            <div style=\"color: #A0A0A0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;\">Ação Imediata</div>
-                            <div style="color: #FFFFFF; font-size: 0.95rem;">{rec['Acao_Imediata']}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        # ==========================================
-        # NOVO: SIMULADOR WHAT-IF (O que acontece se...?)
-        # ==========================================
-        st.markdown("---")
-        st.markdown("### 🔮 Simulador What-if (O que acontece se...?)")
-        
-        with st.expander("⚙️ Simular Mudanças de Preço e Volume", expanded=False):
-            sim_col1, sim_col2, sim_col3 = st.columns(3)
-            
-            with sim_col1:
-                preco_change = st.slider("Mudança de Preço (%)", -50.0, 50.0, 0.0, 5.0, key="price_sim")
-            
-            with sim_col2:
-                volume_change = st.slider("Mudança de Volume (%)", -50.0, 100.0, 0.0, 5.0, key="volume_sim")
-            
-            with sim_col3:
-                st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-                simular_btn = st.button("🚀 Simular Cenário", use_container_width=True)
-            
-            if simular_btn or 'what_if_result' in st.session_state:
-                # Calcular impacto
-                ticket_atual = float(row_foco['Ticket Cliente'])
-                novo_ticket = ticket_atual * (1 + preco_change / 100)
-                
-                fat_atual = float(analyzer.cliente_data.get('faturamento_3m', 0))
-                novo_fat = fat_atual * (1 + volume_change / 100)
-                
-                margem = float(analyzer.cliente_data.get('margem', 0.35))
-                lucro_atual = fat_atual * margem
-                lucro_novo = novo_fat * margem
-                delta_lucro = lucro_novo - lucro_atual
-                
-                # Exibir resultados
-                st.markdown("#### 📊 Resultado da Simulação")
-                
-                sim_res_col1, sim_res_col2, sim_res_col3, sim_res_col4 = st.columns(4)
-                
-                with sim_res_col1:
-                    st.markdown(f"""
-                    <div class="insight-card">
-                        <div class="insight-title">Novo Ticket</div>
-                        <div style="font-size: 1.5rem; color: #1E3A8A; font-weight: bold;">R$ {format_br(novo_ticket)}</div>
-                        <div style="font-size: 0.85rem; color: #A0A0A0; margin-top: 5px;">
-                            Mudança: <span style="color: {'#2ecc71' if novo_ticket > ticket_atual else '#e74c3c'}; font-weight: bold;">{preco_change:+.1f}%</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with sim_res_col2:
-                    st.markdown(f"""
-                    <div class="insight-card">
-                        <div class="insight-title">Novo Faturamento</div>
-                        <div style="font-size: 1.5rem; color: #1E3A8A; font-weight: bold;">R$ {format_br(novo_fat)}</div>
-                        <div style="font-size: 0.85rem; color: #A0A0A0; margin-top: 5px;">
-                            Mudança: <span style="color: {'#2ecc71' if novo_fat > fat_atual else '#e74c3c'}; font-weight: bold;">{volume_change:+.1f}%</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with sim_res_col3:
-                    st.markdown(f"""
-                    <div class="insight-card">
-                        <div class="insight-title">Novo Lucro (3M)</div>
-                        <div style="font-size: 1.5rem; color: #1E3A8A; font-weight: bold;">R$ {format_br(lucro_novo)}</div>
-                        <div style="font-size: 0.85rem; color: #A0A0A0; margin-top: 5px;">
-                            Margem: {margem*100:.1f}%
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with sim_res_col4:
-                    delta_pct = (delta_lucro / lucro_atual * 100) if lucro_atual > 0 else 0
-                    cor_delta = "#2ecc71" if delta_lucro > 0 else "#e74c3c"
-                    st.markdown(f"""
-                    <div class="insight-card">
-                        <div class="insight-title">Impacto no Lucro</div>
-                        <div style="font-size: 1.5rem; color: {cor_delta}; font-weight: bold;">R$ {format_br(abs(delta_lucro))}</div>
-                        <div style="font-size: 0.85rem; color: #A0A0A0; margin-top: 5px;">
-                            <span style="color: {cor_delta}; font-weight: bold;">{delta_pct:+.1f}%</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                # Insight da simulação
-                st.markdown("#### 💡 Insight da Simulação")
-                if preco_change > 0 and volume_change < 0:
-                    insight = f"⚠️ **Atenção**: Aumentar preço em {preco_change:.1f}% pode reduzir volume em {abs(volume_change):.1f}%. Avalie a elasticidade do seu produto."
-                elif preco_change < 0 and volume_change > 0:
-                    insight = f"✅ **Oportunidade**: Reduzir preço em {abs(preco_change):.1f}% pode aumentar volume em {volume_change:.1f}%. Verifique se a margem continua saudável."
-                elif delta_lucro > 0:
-                    insight = f"🚀 **Positivo**: Este cenário aumentaria seu lucro em R$ {format_br(delta_lucro)}. Considere implementar."
+        with tab_entrar:
+            st.subheader("▫️ Oportunidades para entrar em Ads")
+            st.info("Anúncios orgânicos com alta conversão que ainda não estão em Ads.")
+            st.dataframe(enter_fmt, use_container_width=True)
+
+        with tab_escalar:
+            st.subheader("▫️ Campanhas para escalar orçamento")
+            st.info("Campanhas com ROAS forte que estão perdendo impressões por orçamento.")
+            st.dataframe(scale_fmt, use_container_width=True)
+
+        with tab_roas:
+            st.subheader("▫️ Campanhas para baixar ROAS objetivo")
+            st.info("Campanhas competitivas que podem ganhar mais mercado reduzindo o ROAS alvo.")
+            st.dataframe(acos_fmt, use_container_width=True)
+
+        # -------------------------
+        # Visão de Estoque (opcional)
+        # -------------------------
+        if "usar_estoque" in locals() and usar_estoque and estoque_file is not None:
+            with st.expander("📦 Visão de Estoque", expanded=False):
+                if not blocked_stock.empty:
+                    st.subheader("Bloqueados por estoque (iriam para Ads, mas não têm quantidade mínima)")
+                    st.dataframe(format_table_br(prepare_df_for_view(replace_acos_obj_with_roas_obj(blocked_stock), drop_cpi_cols=True, drop_roas_generic=False)), use_container_width=True)
                 else:
-                    insight = f"📉 **Cuidado**: Este cenário reduziria seu lucro em R$ {format_br(abs(delta_lucro))}. Revise a estratégia."
-                
-                st.info(insight)
+                    st.write("Nenhum item foi bloqueado por estoque nas regras atuais.")
+
+                # Risco de ruptura dentro das ações
+                risco = pd.concat([pause_disp, scale_disp, acos_disp], ignore_index=True)
+                if "Estoque_Status" in risco.columns:
+                    risco = risco[risco["Estoque_Status"].isin(["ZERADO", "CRITICO", "BAIXO"])].copy()
+                if not risco.empty:
+                    st.subheader("Risco de ruptura nas ações")
+                    risco_view = prepare_df_for_view(replace_acos_obj_with_roas_obj(risco), drop_cpi_cols=True, drop_roas_generic=False)
+                    st.dataframe(format_table_br(risco_view), use_container_width=True)
+                else:
+                    st.write("Sem alertas de estoque nas ações atuais.")
+
+        # -------------------------
+        # Download Excel (Mercado Livre)
+        # Mantem dataframes originais para nao quebrar o gerar_excel do ml_report
+        # -------------------------
+        st.header("Download do Relatório Completo")
+        try:
+            excel_bytes = ml.gerar_excel(
+                kpis=kpis,
+                camp_agg=camp_agg,
+                pause=pause,
+                enter=enter,
+                scale=scale,
+                acos=acos,
+                camp_strat=camp_strat,
+                daily=None,
+        )
+
+            st.download_button(
+                "Baixar Excel do relatório",
+                data=excel_bytes,
+                file_name="relatorio_meli_ads.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error("Não consegui gerar o Excel.")
+            st.exception(e)
+
+
+    st.divider()
+    
+    # -------------------------
+    # Seção Dedicada: Evolução e Resultados (Comparativo)
+    # -------------------------
+    if camp_snap is not None and not camp_snap.empty:
+        st.divider()
+        st.header("📉 Evolução e Resultados (Comparativo)")
+        st.success("Snapshot de referência detectado! Analisando evolução das campanhas e anúncios...")
+        
+        # KPIs Comparativos Globais
+        st.subheader("Resumo de Performance (Antes vs. Depois)")
+        
+        # Priorizamos os KPIs globais salvos no snapshot para garantir paridade total
+        if kpis_snap and isinstance(kpis_snap, dict) and "Investimento Ads (R$)" in kpis_snap:
+            snap_invest = float(kpis_snap.get("Investimento Ads (R$)", 0))
+            snap_receita = float(kpis_snap.get("Receita Ads (R$)", 0))
+            snap_roas = float(kpis_snap.get("ROAS", 0))
+            st.sidebar.info("✅ Usando KPIs Globais do Snapshot")
+        else:
+            # Fallback para snapshots antigos (soma das campanhas ativas)
+            snap_invest = float(pd.to_numeric(camp_snap["Investimento"], errors="coerce").fillna(0).sum())
+            snap_receita = float(pd.to_numeric(camp_snap["Receita"], errors="coerce").fillna(0).sum())
+            snap_roas = snap_receita / snap_invest if snap_invest > 0 else 0
+            st.sidebar.warning("⚠️ Usando Fallback (Soma de Campanhas)")
+        
+        delta_invest = invest_ads - snap_invest
+        delta_receita = receita_ads - snap_receita
+        delta_roas = roas_val - snap_roas
+        
+        # Formatação de deltas para evitar "R$ -0,00" ou "0,00x" quando idênticos
+        # Aumentamos a tolerância para R$ 1,00 para evitar ruídos de arredondamento de centavos em grandes volumes
+        def fmt_delta_money(val):
+            if val is None or abs(val) < 1.0: return None
+            return fmt_money_br(val)
+            
+        def fmt_delta_roas(val):
+            if val is None or abs(val) < 0.01: return None
+            return f"{val:+.2f}x"
+
+        c_cols = st.columns(4)
+        c_cols[0].metric("💰 Investimento", fmt_money_br(invest_ads), delta=fmt_delta_money(delta_invest), delta_color="inverse")
+        c_cols[1].metric("📈 Receita", fmt_money_br(receita_ads), delta=fmt_delta_money(delta_receita))
+        c_cols[2].metric("🎯 ROAS", f"{roas_val:.2f}x", delta=fmt_delta_roas(delta_roas))
+        
+        # Tacos Delta (se disponível)
+        c_cols[3].metric("📉 TACOS", fmt_percent_br(tacos_pct), delta="Atual")
+
+        st.divider()
+        
+        tab_ev_camp, tab_ev_ads = st.tabs(["📊 Evolução de Campanhas", "🎯 Evolução de Anúncios (MLB)"])
+        
+        with tab_ev_camp:
+            st.subheader("Migração de Quadrantes")
+            migracao_counts = camp_strat_disp["Migracao_Quadrante"].value_counts().reset_index()
+            migracao_counts.columns = ["Migração", "Contagem"]
+            st.dataframe(migracao_counts, use_container_width=True)
+
+            st.subheader("Tabela Comparativa de Campanhas")
+            cols_to_show = [
+                "Nome", "Quadrante", "Migracao_Quadrante", "Acao_Recomendada", 
+                "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
+                "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Recomendada_Snap"
+            ]
+            camp_comp_view = prepare_df_for_view(camp_strat_disp[[c for c in cols_to_show if c in camp_strat_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
+            st.dataframe(format_table_br(camp_comp_view), use_container_width=True)
+
+        with tab_ev_ads:
+            if anuncio_snap is not None and not anuncio_snap.empty:
+                st.subheader("Migração de Status de Anúncios")
+                migracao_counts_ads = ads_panel_disp["Migracao_Status"].value_counts().reset_index()
+                migracao_counts_ads.columns = ["Migração", "Contagem"]
+                st.dataframe(migracao_counts_ads, use_container_width=True)
+
+                st.subheader("Tabela Comparativa de Anúncios (MLB)")
+                cols_to_show_ads = [
+                    "ID", "Titulo", "Campanha", "Status_Anuncio", "Migracao_Status", 
+                    "Investimento", "Delta_Investimento", "Receita", "Delta_Receita", 
+                    "ROAS_Real", "Delta_ROAS", "ROAS_Real_Snap", "Acao_Anuncio", "Acao_Anuncio_Snap"
+                ]
+                ads_comp_view = prepare_df_for_view(ads_panel_disp[[c for c in cols_to_show_ads if c in ads_panel_disp.columns]], drop_cpi_cols=True, drop_roas_generic=False)
+                st.dataframe(format_table_br(ads_comp_view), use_container_width=True)
+            else:
+                st.info("O snapshot carregado não contém dados detalhados de anúncios para comparação.")
+
+
+if __name__ == "__main__":
+    main()

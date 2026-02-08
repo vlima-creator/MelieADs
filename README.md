@@ -1,215 +1,263 @@
-# 📊 Análise de Mercado Marketplace
+<div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.31.0-red)
-![License](https://img.shields.io/badge/License-MIT-green)
+# 📊 Mercado Livre Ads Dashboard
 
-Dashboard interativo para análise estratégica de categorias e subcategorias em marketplaces. Ajuda você a decidir **em qual categoria focar** baseado em dados de mercado e fit de ticket.
+### Dashboard Interativo e Inteligente para Análise e Otimização de Campanhas
 
-## 🎯 Funcionalidades
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.0+-FF4B4B.svg)](https://streamlit.io/)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Active-success.svg)](https://github.com/vlima-creator/MelieADs)
 
-- ✅ **Análise de Cliente:** Configure dados do seller (ticket, margem, faturamento)
-- ✅ **Dados de Mercado:** Adicione evolução temporal da categoria macro
-- ✅ **Análise de Subcategorias:** Compare múltiplas oportunidades de mercado
-- ✅ **Ranking Automático:** Score e classificação (FOCO/OK/EVITAR)
-- ✅ **Simulação de Cenários:** Projeções conservador/provável/otimista
-- ✅ **Dashboard Executivo:** Visualizações interativas com Plotly
-- ✅ **Cálculos Automáticos:** Score, fit de ticket, share, lucro projetado
+---
 
-## 🚀 Como Usar
+</div>
 
-### Instalação
+## 🚀 Sobre o Projeto
 
-1. Clone o repositório:
+Uma solução completa para análise e otimização de campanhas de publicidade no **Mercado Livre Ads**. Este dashboard oferece insights em tempo real, recomendações automáticas e um plano estratégico de 15 dias baseado no algoritmo do Mercado Livre.
+
+---
+
+## ✨ Funcionalidades Principais
+
+### 📈 **KPIs em Tempo Real**
+Acompanhe as métricas mais importantes da sua operação:
+- 💰 **Investimento Total** em Ads
+- 💵 **Receita Gerada** pelas campanhas
+- 📊 **ROAS** (Return on Ad Spend)
+- 🎯 **TACOS** (Total Advertising Cost of Sales)
+
+### 📊 **Análise Visual de Performance**
+Visualizações poderosas para tomada de decisão:
+- **Gráfico de Pareto** → Identifica as campanhas "Locomotivas" que geram 80% da receita
+- **Treemap de Alocação** → Visualiza a distribuição de investimento por campanha e quadrante
+
+### 🗓️ **Plano de Ação Estratégico (15 Dias)**
+Metodologia baseada no algoritmo do Mercado Livre:
+- **Semana 1**: Ajustes ativos (escala, pausar, reduzir ROAS objetivo)
+- **Semana 2**: Período de aprendizado - sem alterações nas campanhas ajustadas
+- ⏱️ Respeita a janela de **7 dias** do algoritmo para máxima eficiência
+
+### 🤖 **Recomendações Automáticas**
+O sistema analisa e sugere ações:
+- ⛔ **Pausar/Revisar** → Campanhas com alto investimento e baixa performance
+- 🎯 **Entrar em Ads** → Produtos orgânicos com alta conversão prontos para publicidade
+- 📈 **Escalar Orçamento** → Campanhas com ROAS forte e perda por orçamento
+- 🎚️ **Baixar ROAS Objetivo** → Campanhas com alta perda por classificação
+
+### 🔍 **Matriz CPI**
+Análise avançada de oportunidades de otimização baseada em **Cost Per Impression**.
+
+---
+
+## 🛠️ Instalação e Uso
+
+### 📋 **Requisitos**
+- Python 3.8 ou superior
+- Relatórios do Mercado Livre em formato Excel:
+  - ✅ Relatório de Desempenho de Vendas (Orgânico)
+  - ✅ Relatório de Anúncios Patrocinados
+  - ✅ Relatório de Campanha
+
+### 💻 **Instalação Local**
+
 ```bash
-git clone https://github.com/seu-usuario/marketplace-analysis.git
-cd marketplace-analysis
-```
+# 1. Clonar o repositório
+git clone https://github.com/vlima-creator/MelieADs.git
+cd MelieADs
 
-2. Instale as dependências:
-```bash
+# 2. Instalar dependências
 pip install -r requirements.txt
-```
 
-3. Execute a aplicação:
-```bash
+# 3. Executar o dashboard
 streamlit run app.py
 ```
 
-4. Acesse no navegador: `http://localhost:8501`
+### 🌐 **Acesso Online**
+> 🔗 Deploy em produção: [Link será fornecido após deploy]
 
-## 📖 Passo a Passo
+---
 
-### 1️⃣ Dados do Cliente
-Preencha informações básicas:
-- Nome da empresa
-- Categoria macro
-- Ticket médio
-- Margem de lucro
-- Faturamento médio (últimos 3 meses)
-- Unidades vendidas (últimos 3 meses)
+## ⚙️ Configuração de Filtros
 
-### 2️⃣ Mercado Categoria (Opcional)
-Adicione dados históricos mensais da categoria para contextualizar tendências.
+Personalize os critérios de análise no dashboard:
 
-### 3️⃣ Mercado Subcategorias
-Informe pelo menos 3 subcategorias com:
-- Faturamento dos últimos 6 meses
-- Unidades vendidas dos últimos 6 meses
+| Filtro | Descrição | Valor Padrão |
+|--------|-----------|--------------|
+| **Visitas Mínimas** | Número mínimo de visitas para considerar produto | 50 |
+| **Conversão Mínima** | Taxa mínima de conversão para entrar em Ads | 3,00% |
+| **Investimento Mínimo** | Investimento mínimo para considerar pausar | R$ 20,00 |
+| **CVR Máximo** | Taxa de conversão máxima antes de pausar | 1,50% |
 
-### 4️⃣ Dashboard Executivo
-Visualize:
-- Ranking automático de subcategorias
-- Score de priorização (0 a 1)
-- Status de recomendação (FOCO/OK/EVITAR)
-- Simulação de 3 cenários de crescimento
-- Gráficos interativos
+> 💡 **Dica**: Os valores padrão são baseados em boas práticas do mercado, mas podem ser ajustados conforme sua operação.
 
-## 🧠 Metodologia
+---
 
-### Score de Priorização
+## 📊 Estrutura de Dados Esperada
 
-O score combina dois fatores:
+### 📄 **Relatório de Desempenho de Vendas**
+- ID do anúncio
+- Título
+- Visitas
+- Quantidade de Vendas
+- Vendas Brutas
+- Conversão (Visitas → Vendas)
 
-**1. Tamanho de Mercado (70%)**
-- Volume de faturamento da subcategoria
-- Normalizado de 0 a 1
+### 📄 **Relatório de Anúncios Patrocinados**
+- Código do anúncio
+- Impressões
+- Cliques
+- Receita
+- Investimento
+- ROAS
 
-**2. Fit de Ticket (30%)**
-- Alinhamento entre ticket do cliente e ticket do mercado
-- Considera range de tolerância configurável (padrão ±20%)
+### 📄 **Relatório de Campanha**
+- Nome da Campanha
+- Status
+- Orçamento
+- ACOS Objetivo
+- Impressões
+- Cliques
+- Receita
+- Investimento
+- Vendas
 
-### Status Automático
+---
 
-- 🟢 **FOCO:** Score ≥ 0.7 + Ticket dentro do range → Prioridade máxima
-- 🟡 **OK:** Score ≥ 0.4 OU ticket aceitável → Oportunidade secundária
-- 🔴 **EVITAR:** Score baixo + ticket desalinhado → Não recomendado
+## 🎯 Interpretação dos Quadrantes
 
-### Cenários
+O sistema classifica automaticamente as campanhas em 4 quadrantes estratégicos:
 
-**Conservador (0,2% share):**
-- Meta realista com baixo investimento
+| Quadrante | Descrição | Ação Recomendada |
+|-----------|-----------|------------------|
+| 🚀 **Escala de Orçamento** | ROAS forte + alta perda por orçamento | Aumentar investimento |
+| 🎯 **Competitividade** | Alta perda por classificação | Reduzir ROAS objetivo |
+| ❌ **Hemorragia** | ROAS baixo ou negativo | Pausar ou revisar drasticamente |
+| ✅ **Estável** | Performance dentro dos parâmetros | Manter monitoramento |
 
-**Provável (0,5% share):**
-- Meta esperada com investimento moderado
+---
 
-**Otimista (1,0% share):**
-- Meta agressiva com investimento alto
+## 📅 Metodologia: Plano de 15 Dias
 
-## 📊 Exemplo Prático
+### 🧠 **Por que 7 dias?**
+O algoritmo do Mercado Livre Ads precisa de **7 dias** para sair do modo de aprendizado após uma alteração. Alterações frequentes quebram esse ciclo e prejudicam a performance.
 
-### Caso: Empresa Tamoyo (Ferramentas)
+### 📆 **Estrutura Recomendada**
 
-**Dados do Cliente:**
-- Ticket médio: R$ 204,34
-- Margem: 15%
-- Faturamento 3M: R$ 33.511,65
+#### **Dias 1-7: Ajustes Ativos** 🔧
+- **Dia 1**: Escala de orçamento + Pausar hemorragias
+- **Dia 3**: Reduzir ROAS objetivo (competitividade)
+- **Dia 5**: Monitoramento
 
-**Análise de Subcategorias:**
+#### **Dias 8-15: Período de Aprendizado** 🧘
+- ⏸️ Não altere as campanhas ajustadas
+- 👀 Apenas monitore ROAS, CPC e volume
+- 📝 Prepare próximas otimizações
+- **Dia 15**: Reavaliação e planejamento do próximo ciclo
 
-| Subcategoria | Mercado 6M | Status | Motivo |
-|--------------|------------|--------|--------|
-| **Ferramentas Elétricas** | R$ 3,73 bi | **FOCO** ✅ | Mercado gigante + ticket OK |
-| Ferramentas Manuais | R$ 583 mi | EVITAR ⚠️ | Ticket muito baixo |
-| Acessórios | R$ 555 mi | EVITAR ⚠️ | Ticket muito baixo |
+---
 
-**Cenário Provável (0,5% share em Ferramentas Elétricas):**
-- Receita 6M: **R$ 18,65 milhões**
-- Crescimento: **278x** vs atual
-- Lucro adicional: **R$ 27.975**
+## 📈 Métricas Principais
 
-## 🛠️ Estrutura do Projeto
-
+### 💰 **ROAS (Return on Ad Spend)**
 ```
-marketplace-analysis/
-├── app.py                          # Aplicação Streamlit principal
-├── requirements.txt                # Dependências Python
-├── utils/
-│   ├── market_analyzer.py         # Lógica de cálculos e análise
-│   └── visualizations.py          # Gráficos com Plotly
-├── data/                          # Dados salvos (gerado em runtime)
-└── README.md                      # Este arquivo
+ROAS = Receita / Investimento
+```
+> **Meta**: Acima de **5x**  
+> Quanto maior, melhor. Indica o retorno de cada real investido.
+
+### 🎯 **TACOS (Total Advertising Cost of Sales)**
+```
+TACOS = Investimento Ads / Faturamento Total
+```
+> **Meta**: Abaixo de **15%**  
+> Quanto menor, melhor. Mostra o peso dos Ads no faturamento total.
+
+### 📊 **ACOS (Advertising Cost of Sales)**
+```
+ACOS = Investimento / Receita Ads
+```
+> Quanto menor, melhor. É o inverso do ROAS.
+
+### 🔄 **CVR (Conversion Rate)**
+```
+CVR = Vendas / Cliques
+```
+> Percentual de cliques que resultam em venda.
+
+---
+
+## 🔧 Tecnologias Utilizadas
+
+<div align="center">
+
+| Tecnologia | Função |
+|------------|--------|
+| ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white) | Framework para dashboards interativos |
+| ![Pandas](https://img.shields.io/badge/Pandas-150458?style=for-the-badge&logo=pandas&logoColor=white) | Processamento e análise de dados |
+| ![Plotly](https://img.shields.io/badge/Plotly-3F4F75?style=for-the-badge&logo=plotly&logoColor=white) | Visualizações gráficas interativas |
+| ![Python](https://img.shields.io/badge/Python_3.11-3776AB?style=for-the-badge&logo=python&logoColor=white) | Linguagem de programação |
+
+</div>
+
+---
+
+## 🔐 Segurança e Privacidade
+
+- 🏠 **Processamento Local**: Os dados são processados localmente
+- 🚫 **Zero Armazenamento**: Nenhum dado é armazenado em servidores externos
+- 🔒 **Execução Independente**: Cada execução é isolada e segura
+
+---
+
+## 🐛 Troubleshooting
+
+### ❓ **"Arquivo de estilo não encontrado"**
+Certifique-se de que o diretório `.streamlit/` existe e contém o arquivo `style.css`.
+
+### ❓ **"Erro ao processar os arquivos"**
+Verifique se os arquivos Excel estão no formato correto e contêm todas as colunas esperadas.
+
+### ❓ **Gráficos não aparecem**
+Verifique se a biblioteca Plotly está instalada:
+```bash
+pip install plotly
 ```
 
-## 📦 Dependências
+---
 
-- `streamlit==1.31.0` - Framework web
-- `pandas==2.2.0` - Manipulação de dados
-- `numpy==1.26.3` - Cálculos numéricos
-- `plotly==5.18.0` - Visualizações interativas
-- `openpyxl==3.1.2` - Leitura de Excel (futuro)
+## 📞 Suporte e Contato
 
-## 🎨 Recursos Visuais
+Para dúvidas, sugestões ou suporte técnico, entre em contato com a equipe de desenvolvimento.
 
-- **Gráficos Interativos:** Evolução temporal, ranking, comparações
-- **Métricas Dinâmicas:** KPIs principais destacados
-- **Indicador Gauge:** Score visual com status colorido
-- **Tabelas Estilizadas:** Formatação condicional por status
-- **Responsivo:** Adapta-se a diferentes tamanhos de tela
+---
 
-## 💡 Casos de Uso
+## 📝 Changelog
 
-### Para Consultores
-- Apresentar análise de mercado para clientes
-- Recomendar categorias estratégicas
-- Quantificar oportunidades de crescimento
+### 🆕 **v2.0 (Atual)**
+- ✅ Gráficos de Pareto e Treemap
+- ✅ Plano de 15 dias com trava de 7 dias
+- ✅ UI/UX melhorada com tema escuro
+- ✅ Filtros de regra customizáveis
 
-### Para Gestores de Marketplace
-- Avaliar novas categorias para expansão
-- Priorizar investimentos em portfólio
-- Validar fit de ticket de sellers
+### 📦 **v1.0**
+- Análise básica de campanhas
+- Recomendações automáticas
+- Plano de 7 dias
 
-### Para Sellers
-- Decidir em qual categoria entrar
-- Ajustar estratégia de precificação
-- Projetar receita e lucratividade
-
-## 🔮 Próximas Funcionalidades
-
-- [ ] Exportar relatórios em PDF
-- [ ] Salvar/Carregar análises (JSON)
-- [ ] Importar dados de Excel
-- [ ] Análise de concorrência
-- [ ] Sazonalidade mês a mês
-- [ ] Integração com APIs de marketplaces
-- [ ] Machine Learning para previsões
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Para contribuir:
-
-1. Fork o projeto
-2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`)
-3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
-4. Push para a branch (`git push origin feature/nova-funcionalidade`)
-5. Abra um Pull Request
+---
 
 ## 📄 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
-## 👨‍💻 Autor
-
-**GenSpark AI Developer**
-
-Baseado no template Excel "Análise de Mercado Marketplace v8"
-
-## 🙏 Agradecimentos
-
-- Baseado no template Excel de análise de mercado
-- Desenvolvido com Streamlit
-- Visualizações com Plotly
-
-## 📞 Suporte
-
-Para dúvidas ou sugestões, abra uma [issue](https://github.com/seu-usuario/marketplace-analysis/issues) no GitHub.
+**Propriedade de Rafa Consulting**. Todos os direitos reservados.
 
 ---
 
 <div align="center">
 
-**Desenvolvido com ❤️ usando Streamlit**
+**Última atualização**: Janeiro de 2026
 
-[⬆ Voltar ao topo](#-análise-de-mercado-marketplace)
+⭐ **Se este projeto foi útil, considere dar uma estrela!** ⭐
 
 </div>
