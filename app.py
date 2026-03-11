@@ -758,8 +758,8 @@ def main():
         
         # Exibir logo dinâmico baseado no marketplace
         logo_configs = {
-            "mercado_livre": {"path": "assets/mercado_livre_logo_transparent.png", "color": "#ffe600", "size": "55px"},
-            "shopee": {"path": "assets/shopee_logo_transparent.png", "color": "#ee4d2d", "size": "55px"}
+            "mercado_livre": {"path": "assets/mercado_livre_logo_transparent.png", "bg": "#ffe600", "size": "55px", "padding": "12px"},
+            "shopee": {"path": "assets/shopee_logo_transparent.png", "bg": "#ffffff", "size": "60px", "padding": "10px"}
         }
         
         if selected_marketplace in logo_configs:
@@ -769,8 +769,8 @@ def main():
                 st.markdown(
                     f"""
                     <div style="display: flex; justify-content: center; margin: 15px 0;">
-                        <div style="background: {config['color']}; padding: 12px; border-radius: 50%; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                            <img src="data:image/png;base64,{logo_base64}" width="{config['size']}">
+                        <div style="background: {config['bg']}; padding: {config['padding']}; border-radius: 50%; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                            <img src="data:image/png;base64,{logo_base64}" style="max-width: 100%; max-height: 100%; object-fit: contain;">
                         </div>
                     </div>
                     <h3 style="text-align: center; margin-top: 0;">{mkt.get_marketplace_config(selected_marketplace)['name']}</h3>
@@ -814,8 +814,8 @@ def main():
     
     # Título do Dashboard com Logo Dinâmico
     header_configs = {
-        "mercado_livre": {"path": "assets/mercado_livre_logo_transparent.png", "color": "#ffe600"},
-        "shopee": {"path": "assets/shopee_logo_transparent.png", "color": "#ee4d2d"}
+        "mercado_livre": {"path": "assets/mercado_livre_logo_transparent.png", "color": "#ffe600", "bg": "#ffe600"},
+        "shopee": {"path": "assets/shopee_logo_transparent.png", "color": "#ee4d2d", "bg": "#ffffff"}
     }
     
     if selected_marketplace in header_configs:
@@ -825,8 +825,8 @@ def main():
             st.markdown(
                 f"""
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 25px; background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 12px; border-left: 5px solid {config['color']};">
-                    <div style="background: {config['color']}; padding: 8px; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
-                        <img src="data:image/png;base64,{logo_base64}" width="35">
+                    <div style="background: {config['bg']}; padding: 8px; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
+                        <img src="data:image/png;base64,{logo_base64}" style="max-width: 35px; max-height: 35px; object-fit: contain;">
                     </div>
                     <h1 style="margin: 0; font-size: 1.8rem;">{marketplace_config['name']} <span style="color: #888; font-weight: 300;">| Dashboard</span></h1>
                 </div>
