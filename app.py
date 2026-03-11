@@ -1491,9 +1491,16 @@ def main():
     # Plano de Ação 15 Dias
     # -------------------------
     st.header("Plano de Ação Estratégico (15 Dias)")
-    st.info("Este plano respeita a janela de 7 dias do algoritmo do Mercado Livre. Não faça alterações nas mesmas campanhas em intervalos menores que uma semana.")
     
-    plan15 = ml.build_15_day_plan(camp_strat)
+    if selected_marketplace == "mercado_livre":
+        st.info("Este plano respeita a janela de 7 dias do algoritmo do Mercado Livre. Não faça alterações nas mesmas campanhas em intervalos menores que uma semana.")
+        plan15 = ml.build_15_day_plan(camp_strat)
+    else:
+        # Para Shopee, por enquanto não temos um plano de 15 dias estruturado da mesma forma
+        # mas podemos exibir as recomendações geradas
+        st.info("Plano de ação baseado nas recomendações de performance da Shopee.")
+        plan15 = pd.DataFrame() # Ou lógica futura para Shopee
+    
     if not plan15.empty:
         # Estilização básica para o plano
         def color_fase(val):

@@ -892,6 +892,9 @@ def build_opportunity_highlights(camp_agg_strat: pd.DataFrame) -> dict:
 
 def build_15_day_plan(camp_agg_strat: pd.DataFrame) -> pd.DataFrame:
     """Gera um plano de 15 dias respeitando a janela de 7 dias do algoritmo."""
+    if camp_agg_strat.empty or "Quadrante" not in camp_agg_strat.columns:
+        return pd.DataFrame()
+        
     df = camp_agg_strat.copy()
 
     # --- SEMANA 1: AJUSTES ---
