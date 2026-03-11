@@ -753,7 +753,7 @@ def main():
         st.markdown(
             """
             <div style='font-size: 0.8em; color: #888888;'>
-                © Vinicius Lima | AdsEngine
+                © Desenvolvido por Vinicius Lima / CNPJ: 47.192.694/0001-70
             </div>
             """,
             unsafe_allow_html=True
@@ -1751,7 +1751,7 @@ def main():
     st.markdown(
         """
         <div style='text-align: center; color: #888888; padding: 20px;'>
-            © Desenvolvido por Vinicius Lima | AdsEngine
+            © Desenvolvido por Vinicius Lima / CNPJ: 47.192.694/0001-70
         </div>
         """,
         unsafe_allow_html=True
