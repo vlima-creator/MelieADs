@@ -1232,13 +1232,13 @@ def main():
         tacos_val = float(kpis.get("TACOS", 0))
         tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
 
-        cols[0].metric("⟀ Investimento", fmt_money_br(invest_ads))
-        cols[1].metric("⟁ Receita", fmt_money_br(receita_ads))
+        cols[0].metric("◈ Investimento", fmt_money_br(invest_ads))
+        cols[1].metric("◈ Receita", fmt_money_br(receita_ads))
         
         # ROAS com cor dinâmica
         roas_label = "Bom" if roas_val >= 5 else "Abaixo da meta"
         cols[2].metric(
-            "◎ ROAS", 
+            "◈ ROAS", 
             fmt_number_br(roas_val, 2), 
             delta=roas_label, 
             delta_color="normal" if roas_val >= 5 else "inverse"
@@ -1258,7 +1258,7 @@ def main():
             tacos_label = "Muito Alto"
             tacos_color = "inverse"
         
-        cols[3].metric("⊞ TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
+        cols[3].metric("◈ TACOS", fmt_percent_br(tacos_pct), delta=tacos_label, delta_color=tacos_color)
 
     elif selected_marketplace == "shopee":
         gmv_total = float(kpis.get("GMV Total", 0))
@@ -1271,32 +1271,32 @@ def main():
         # Renderiza KPIs da Shopee
         lgc.render_glass_kpi_row([
             {
-                "icon": "💰",
+                "icon": "◈",
                 "label": "GMV TOTAL",
                 "value": fmt_money_br(gmv_total)
             },
             {
-                "icon": "💵",
+                "icon": "◈",
                 "label": "DESPESAS",
                 "value": fmt_money_br(despesas)
             },
             {
-                "icon": "📈",
+                "icon": "◈",
                 "label": "ROAS MÉDIO",
                 "value": f"{fmt_number_br(roas_medio, 2)}x"
             },
             {
-                "icon": "🎯",
+                "icon": "◈",
                 "label": "ROAS DIRETO",
                 "value": f"{fmt_number_br(roas_direto, 2)}x"
             },
             {
-                "icon": "🛡️",
+                "icon": "◈",
                 "label": "CRÉDITO PROTEÇÃO",
                 "value": fmt_money_br(credito_protecao)
             },
             {
-                "icon": "✅",
+                "icon": "◈",
                 "label": "CAMPANHAS PROTEGIDAS",
                 "value": str(campanhas_protegidas)
             }
@@ -1784,12 +1784,12 @@ def main():
             return f"{val:+.2f}x"
 
         c_cols = st.columns(4)
-        c_cols[0].metric("⟀ Investimento", fmt_money_br(invest_ads), delta=fmt_delta_money(delta_invest), delta_color="inverse")
-        c_cols[1].metric("⟁ Receita", fmt_money_br(receita_ads), delta=fmt_delta_money(delta_receita))
-        c_cols[2].metric("◎ ROAS", f"{roas_val:.2f}x", delta=fmt_delta_roas(delta_roas))
+        c_cols[0].metric("◈ Investimento", fmt_money_br(invest_ads), delta=fmt_delta_money(delta_invest), delta_color="inverse")
+        c_cols[1].metric("◈ Receita", fmt_money_br(receita_ads), delta=fmt_delta_money(delta_receita))
+        c_cols[2].metric("◈ ROAS", f"{roas_val:.2f}x", delta=fmt_delta_roas(delta_roas))
         
         # Tacos Delta (se disponível)
-        c_cols[3].metric("⊞ TACOS", fmt_percent_br(tacos_pct), delta="Atual")
+        c_cols[3].metric("◈ TACOS", fmt_percent_br(tacos_pct), delta="Atual")
 
         st.divider()
         
