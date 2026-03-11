@@ -12,6 +12,7 @@ import sales_funnel as sf
 import marketplace_config as mkt
 import shopee_report as shopee
 import user_guide as ug
+import engine_features as engine
 
 
 # -------------------------
@@ -1590,6 +1591,24 @@ def main():
             else:
                 st.write("Sem alertas de estoque nas ações atuais.")
 
+    # -------------------------
+    # Funcionalidades "Engine" - Smart Budget, Motor Aquecido, Filtro de Combustível
+    # -------------------------
+    if selected_marketplace == "mercado_livre" and camp_strat is not None and not camp_strat.empty:
+        try:
+            from engine_integration import render_engine_features
+            render_engine_features(
+                camp_strat=camp_strat,
+                stock_df=stock_df if "stock_df" in locals() else None,
+                usar_estoque=usar_estoque if "usar_estoque" in locals() else False,
+                fmt_money_br_func=fmt_money_br,
+                fmt_int_br_func=fmt_int_br
+            )
+        except Exception as e:
+            st.warning(f"⚠️ Erro ao carregar funcionalidades Engine: {str(e)}")
+    
+    st.divider()
+    
     # -------------------------
     # Download Excel
     # Mantem dataframes originais para nao quebrar o gerar_excel do ml_report
