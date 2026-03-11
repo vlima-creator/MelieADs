@@ -2,12 +2,12 @@
 import streamlit as st
 
 def render_user_guide():
-    st.title("📖 Guia de Uso - Dashboard Estratégico MelieADs")
+    st.title("📖 Guia de Uso - AdsEngine")
     st.write("Este guia detalha o funcionamento do dashboard, os indicadores apresentados, a origem dos dados e a lógica por trás de cada cálculo e recomendação.")
 
     with st.expander("🚀 Como Começar - Fluxo de Trabalho", expanded=True):
         st.markdown("""
-        O MelieADs foi projetado para transformar relatórios brutos em decisões estratégicas. Siga o fluxo abaixo:
+        O AdsEngine foi projetado para transformar relatórios brutos em decisões estratégicas. Siga o fluxo abaixo:
 
         1.  **Escolha o Canal:** Na barra lateral, selecione **Mercado Livre** ou **Shopee**.
         2.  **Upload de Dados:** Insira os arquivos exportados diretamente das plataformas (veja a seção "Localizando os Relatórios").
@@ -39,7 +39,7 @@ def render_user_guide():
 
         ### 📎 Opcionais (Ambos)
         *   **Estoque:** Arquivo Excel com colunas `ITEM_ID` e `QUANTITY`.
-        *   **Snapshot:** Arquivo gerado anteriormente pelo próprio MelieADs para análise de evolução (Antes vs Depois).
+        *   **Snapshot:** Arquivo gerado anteriormente pelo próprio AdsEngine para análise de evolução (Antes vs Depois).
         """)
 
     with st.expander("📈 Indicadores e Fórmulas de Cálculo", expanded=False):
@@ -78,7 +78,7 @@ def render_user_guide():
 
     with st.expander("🎯 Lógica das Recomendações (Inteligência do App)", expanded=False):
         st.markdown("""
-        O MelieADs utiliza uma **Matriz de Quadrantes** para classificar suas campanhas e anúncios:
+        O AdsEngine utiliza uma **Matriz de Quadrantes** para classificar suas campanhas e anúncios:
 
         ### 🟡 Mercado Livre
         1.  **ESCALA (Escalar Orçamento):** 

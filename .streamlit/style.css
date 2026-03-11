@@ -8,9 +8,9 @@
     --glass-bg: rgba(255, 255, 255, 0.05);
     --glass-border: rgba(255, 255, 255, 0.1);
     --glass-shadow: rgba(0, 0, 0, 0.3);
-    --accent-primary: #3483fa;
+    --accent-primary: #00C853; /* Verde Performance */
     --accent-secondary: #ffe600;
-    --accent-success: #00a650;
+    --accent-success: #00C853; /* Verde Performance */
     --accent-danger: #f53d3d;
     --text-primary: #ffffff;
     --text-secondary: rgba(255, 255, 255, 0.7);

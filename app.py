@@ -721,7 +721,7 @@ def render_funnel_chart(kpis):
     st.plotly_chart(fig, use_container_width=True)
 
 def main():
-    st.set_page_config(page_title="MelieADs", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="AdsEngine", layout="wide", initial_sidebar_state="expanded")
 
     # Carregar CSS customizado
     try:
@@ -753,16 +753,17 @@ def main():
         st.markdown(
             """
             <div style='font-size: 0.8em; color: #888888;'>
-                © Vinicius Lima<br>
-                CNPJ: 47.192.694/0001-70
+                © Vinicius Lima | AdsEngine
             </div>
             """,
             unsafe_allow_html=True
         )
         st.divider()
     
+    st.title("AdsEngine")
+    st.markdown("<h3 style='text-align: center; color: #00C853;'>Otimização Inteligente para Campanhas de Alta Performance</h3>", unsafe_allow_html=True)
+
     # Título dinâmico baseado no marketplace
-    # st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
 
     selected_page = st.sidebar.radio(
         "Navegação",
@@ -1750,7 +1751,7 @@ def main():
     st.markdown(
         """
         <div style='text-align: center; color: #888888; padding: 20px;'>
-            © Desenvolvido por Vinicius Lima / CNPJ: 47.192.694/0001-70
+            © Desenvolvido por Vinicius Lima | AdsEngine
         </div>
         """,
         unsafe_allow_html=True
