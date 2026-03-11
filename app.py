@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import base64
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -14,6 +15,16 @@ import shopee_report as shopee
 import user_guide as ug
 import engine_features as engine
 
+
+# -------------------------
+# Utilitários de Imagem
+# -------------------------
+def get_image_base64(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
 
 # -------------------------
 # Formatadores BR
@@ -735,16 +746,33 @@ def main():
         st.markdown("### 🏪 Selecionar Marketplace")
         
         marketplace_options = mkt.get_marketplace_list()
-        marketplace_labels = [f"{icon} {name}" for _, name, icon in marketplace_options]
         marketplace_keys = [key for key, _, _ in marketplace_options]
         
         selected_marketplace = st.selectbox(
             "Canal de Vendas",
             options=marketplace_keys,
-            format_func=lambda x: f"{mkt.get_marketplace_config(x)['icon']} {mkt.get_marketplace_config(x)['name']}",
+            format_func=lambda x: mkt.get_marketplace_config(x)['name'],
             index=0,
             label_visibility="collapsed"
         )
+        
+        # Exibir logo se for Mercado Livre
+        if selected_marketplace == "mercado_livre":
+            logo_path = "assets/mercado_livre_logo.png"
+            logo_base64 = get_image_base64(logo_path)
+            if logo_base64:
+                st.markdown(
+                    f"""
+                    <div style="display: flex; justify-content: center; margin-bottom: 10px;">
+                        <img src="data:image/png;base64,{logo_base64}" width="150">
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(f"### {mkt.get_marketplace_config(selected_marketplace)['icon']} {mkt.get_marketplace_config(selected_marketplace)['name']}")
+        else:
+            st.markdown(f"### {mkt.get_marketplace_config(selected_marketplace)['icon']} {mkt.get_marketplace_config(selected_marketplace)['name']}")
         
         marketplace_config = mkt.get_marketplace_config(selected_marketplace)
         
@@ -776,7 +804,24 @@ def main():
         ug.render_user_guide()
         return
     
-    st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
+    # Título do Dashboard com Logo para Mercado Livre
+    if selected_marketplace == "mercado_livre":
+        logo_path = "assets/mercado_livre_logo.png"
+        logo_base64 = get_image_base64(logo_path)
+        if logo_base64:
+            st.markdown(
+                f"""
+                <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
+                    <img src="data:image/png;base64,{logo_base64}" width="80">
+                    <h1 style="margin: 0;">{marketplace_config['name']} - Dashboard</h1>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
+    else:
+        st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
 
     with st.sidebar:
         
