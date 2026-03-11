@@ -2,131 +2,108 @@
 import streamlit as st
 
 def render_user_guide():
-    st.title("📖 Guia de Uso - Dashboard Estratégico")
-    st.write("Este guia explica como utilizar o dashboard, quais relatórios são necessários, como configurar os parâmetros e como os cálculos são realizados.")
+    st.title("📖 Guia de Uso - Dashboard Estratégico MelieADs")
+    st.write("Este guia detalha o funcionamento do dashboard, os indicadores apresentados, a origem dos dados e a lógica por trás de cada cálculo e recomendação.")
 
-    with st.expander("Como Começar - Passo a Passo", expanded=True):
+    with st.expander("🚀 Como Começar - Fluxo de Trabalho", expanded=True):
         st.markdown("""
-        Para começar a usar o Dashboard Estratégico, siga estes passos:
+        O MelieADs foi projetado para transformar relatórios brutos em decisões estratégicas. Siga o fluxo abaixo:
 
-        1.  **Selecione o Marketplace:** Na barra lateral esquerda, escolha entre **Mercado Livre** ou **Shopee**.
-        2.  **Faça Upload dos Relatórios:** Para cada marketplace, faça o upload dos arquivos de relatório obrigatórios e opcionais conforme indicado na seção "Localizando os Relatórios".
-        3.  **Ajuste os Filtros de Regra:** Defina os parâmetros para as regras de entrada e pausa de anúncios, bem como as regras por anúncio (Ads).
-        4.  **Gere o Relatório:** Clique no botão "Gerar relatório" para processar os dados e visualizar o dashboard.
-        5.  **Analise os Dados:** Explore as diferentes abas e seções do dashboard para obter insights sobre suas campanhas.
+        1.  **Escolha o Canal:** Na barra lateral, selecione **Mercado Livre** ou **Shopee**.
+        2.  **Upload de Dados:** Insira os arquivos exportados diretamente das plataformas (veja a seção "Localizando os Relatórios").
+        3.  **Configuração de Regras:** 
+            *   Defina o **ACOS Máximo** desejado.
+            *   Ajuste as travas de **Estoque Mínimo** para evitar gastar em produtos sem disponibilidade.
+            *   Configure os filtros de **Confiança de Dado** (investimento/cliques mínimos para gerar recomendação).
+        4.  **Processamento:** Clique em **"Gerar relatório"**. O sistema irá cruzar os dados orgânicos com os de publicidade.
+        5.  **Execução:** Utilize as tabelas de "Ações Recomendadas" para aplicar as mudanças diretamente na sua conta.
         """)
 
-    with st.expander("Localizando os Relatórios", expanded=False):
+    with st.expander("📂 Localizando os Relatórios", expanded=False):
         st.markdown("""
-        ### 📦 Mercado Livre
+        ### 🟡 Mercado Livre (Obrigatórios)
+        *   **Desempenho de Anúncios (Orgânico):** 
+            *   `Métricas > Anúncios > Baixar Relatório (Excel)`. 
+            *   *Uso:* Base para cálculo de conversão orgânica e TACOS.
+        *   **Anúncios Patrocinados (Ads):** 
+            *   `Publicidade > Relatórios > Tipo: Anúncios > Agrupamento: Total`. 
+            *   *Uso:* Performance individual de cada item em Ads.
+        *   **Relatório de Campanha:** 
+            *   `Publicidade > Relatórios > Tipo: Campanhas > Agrupamento: Total`. 
+            *   *Uso:* Visão macro e perda de impressões.
 
-        Para o Mercado Livre, você precisará dos seguintes relatórios:
+        ### 🟠 Shopee (Obrigatórios)
+        *   **Dados Gerais de Anúncios:** 
+            *   `Central do Vendedor > Marketing > Meus Anúncios > Relatórios > Todos os Anúncios CPC > Exportar (CSV)`.
+            *   *Uso:* Base para cálculo de GMV, ROAS e Proteção.
 
-        *   **Relatório de Desempenho de Anúncios (Excel):**
-            *   **Caminho:** Métricas > Selecionar o Período > Descer até a sessão Desempenho de anúncios > Baixar relatório > Desempenho dos seus anúncios.
-            *   **Conteúdo:** Detalha a performance orgânica de cada anúncio.
-
-        *   **Relatório Anúncios Patrocinados (Excel):**
-            *   **Caminho:** Publicidade > Relatórios > Tipo de Relatório: Anúncios (Padrão) > Selecionar Período > Agrupamento de Dados: Total do Período.
-            *   **Conteúdo:** Detalha a performance de cada anúncio dentro do Ads.
-
-        *   **Relatório de Campanha (Excel):**
-            *   **Caminho:** Publicidade > Relatórios > Tipo de Relatório: Campanhas (Padrão) > Selecionar Período > Agrupamento de Dados: Total do Período.
-            *   **Conteúdo:** Traz o resumo consolidado das suas campanhas.
-
-        *   **Snapshot de Referência (Excel) - Opcional:**
-            *   **Caminho:** Gerado automaticamente pelo dashboard na primeira execução ou baixado manualmente.
-            *   **Conteúdo:** Arquivo gerado há 15 dias para comparar evolução (Snapshot v2).
-
-        *   **Arquivo de Estoque (Excel) - Opcional:**
-            *   **Caminho:** Arquivo personalizado com informações de estoque.
-            *   **Conteúdo:** Utilizado para ativar a visão de estoque e aplicar regras baseadas na disponibilidade.
-
-        ### 🛒 Shopee
-
-        Para a Shopee, você precisará dos seguintes relatórios:
-
-        *   **Dados Gerais de Anúncios (CSV) - Obrigatório:**
-            *   **Caminho:** Central do Vendedor > Marketing > Meus Anúncios > Relatórios > Selecionar Período > Tipo de Relatório: Todos os Anúncios CPC > Exportar.
-            *   **Conteúdo:** Relatório de Todos os Anúncios CPC da Shopee.
-
-        *   **Relatório de Palavras-chave (CSV) - Opcional:**
-            *   **Caminho:** Central do Vendedor > Marketing > Meus Anúncios > Relatórios > Selecionar Período > Tipo de Relatório: Anúncio + Palavra-chave + Locação > Exportar.
-            *   **Conteúdo:** Detalha a performance das palavras-chave nos seus anúncios.
+        ### 📎 Opcionais (Ambos)
+        *   **Estoque:** Arquivo Excel com colunas `ITEM_ID` e `QUANTITY`.
+        *   **Snapshot:** Arquivo gerado anteriormente pelo próprio MelieADs para análise de evolução (Antes vs Depois).
         """)
 
-    with st.expander("O que você encontra em cada Aba", expanded=False):
+    with st.expander("📈 Indicadores e Fórmulas de Cálculo", expanded=False):
         st.markdown("""
-        O dashboard é dividido em seções principais para facilitar a análise:
+        ### 📊 Indicadores Universais
+        
+        *   **ROAS Real (Return On Ad Spend):** Eficiência direta do investimento.
+            *   **Cálculo:** `Receita Ads / Investimento Ads`
+            *   *Exemplo:* ROAS 5.00x significa que cada R$ 1,00 investido gerou R$ 5,00 em vendas.
+        
+        *   **CTR (Click-Through Rate):** Atratividade do anúncio.
+            *   **Cálculo:** `(Cliques / Impressões) * 100`
+            *   *Benchmark:* Abaixo de 0.60% costuma indicar necessidade de revisão de foto ou título.
 
-        ### 📊 Indicadores Chave de Performance (KPIs)
-        *   **Mercado Livre:** Investimento, Receita, ROAS e TACOS.
-        *   **Shopee:** GMV Total, Despesas, ROAS Médio, ROAS Direto Médio, Crédito Proteção Total e Campanhas com Proteção.
+        *   **CVR (Conversion Rate):** Poder de venda da oferta.
+            *   **Cálculo:** `(Vendas / Cliques) * 100`
 
-        ### 📈 Análise Visual de Performance
-        *   **Mercado Livre:** Gráficos de Pareto e Treemap para análise de campanhas.
-        *   **Shopee:** Análise de Proteção de ROAS, Conversões Diretas vs Totais e Recomendações Estratégicas (Ativar Proteção, Otimizar ROAS, Escalar GMV, Pausar/Revisar).
+        ### 🟡 Exclusivos Mercado Livre
+        
+        *   **TACOS (Total Advertising Cost of Sales):** Impacto do Ads no faturamento total.
+            *   **Cálculo:** `Investimento Ads / Faturamento Total (Orgânico + Ads)`
+            *   *Uso:* Mede a saúde financeira da conta. O ideal costuma ser entre 5% e 15%.
+        
+        *   **Perda por Orçamento:** % de vezes que seu anúncio parou de aparecer porque o dinheiro do dia acabou.
+        *   **Perda por Classificação (Rank):** % de vezes que seu anúncio perdeu o leilão por falta de relevância ou ROAS alvo muito alto.
 
-        ### 📋 Painel Geral de Campanhas
-        *   **Mercado Livre:** Tabela detalhada com informações de campanhas, incluindo migração de quadrantes e ações recomendadas.
-
-        ### 📉 Matriz CPI (Oportunidades de Otimização)
-        *   **Mercado Livre:** Tabela para identificar oportunidades de otimização de campanhas.
-
-        ### 🎯 Nível de Anúncio (Patrocinados)
-        *   **Mercado Livre:** Análise tática por anúncio, anúncios para pausar, anúncios vencedores, otimização de fotos, otimização de palavras-chave e otimização de oferta.
+        ### 🟠 Exclusivos Shopee
+        
+        *   **Crédito Proteção Total:** Estimativa de reembolso da Shopee.
+            *   **Cálculo:** `Despesas - (GMV / (ROAS Alvo * 0.90))`
+            *   *Nota:* Se a "Impulsão Rápida" estiver ativa, o fator de proteção cai para 70% (0.70).
+        
+        *   **Qualidade de Atribuição:** % de vendas que são diretas vs. totais.
+            *   **Cálculo:** `(Vendas Diretas / Vendas Totais) * 100`
         """)
 
-    with st.expander("Explicação dos Cálculos e Métricas", expanded=False):
+    with st.expander("🎯 Lógica das Recomendações (Inteligência do App)", expanded=False):
         st.markdown("""
-        Aqui estão as definições e fórmulas dos principais indicadores utilizados no dashboard:
+        O MelieADs utiliza uma **Matriz de Quadrantes** para classificar suas campanhas e anúncios:
 
-        ### Indicadores Gerais
+        ### 🟡 Mercado Livre
+        1.  **ESCALA (Escalar Orçamento):** 
+            *   *Critério:* ROAS > 7.0 e Perda por Orçamento > 40%.
+            *   *Ação:* Aumentar o orçamento diário para capturar a demanda reprimida.
+        2.  **COMPETITIVIDADE (Baixar ROAS Alvo):** 
+            *   *Critério:* Receita alta e Perda por Classificação > 50%.
+            *   *Ação:* Reduzir o ROAS Alvo para ganhar mais leilões e volume.
+        3.  **HEMORRAGIA (Pausar/Revisar):** 
+            *   *Critério:* ROAS < 3.0 ou ACOS Real > 30% acima do objetivo.
+            *   *Ação:* Pausar anúncios ineficientes ou reduzir lances drasticamente.
 
-        *   **ROAS (Return On Ad Spend):** Retorno sobre o investimento em publicidade.
-            *   **Fórmula:** `(Receita de Vendas Gerada por Anúncios / Investimento em Anúncios)`
-            *   **Interpretação:** Quanto maior, melhor. Indica quantos reais de receita são gerados para cada real investido em anúncios.
-
-        *   **TACOS (Total Advertising Cost of Sales):** Custo total de publicidade sobre as vendas totais.
-            *   **Fórmula:** `(Investimento em Anúncios / Vendas Totais)`
-            *   **Interpretação:** Quanto menor, melhor. Indica a porcentagem das vendas totais que é gasta em publicidade.
-
-        *   **CTR (Click-Through Rate):** Taxa de cliques.
-            *   **Fórmula:** `(Cliques / Impressões) * 100`
-            *   **Interpretação:** A porcentagem de pessoas que viram seu anúncio e clicaram nele.
-
-        *   **CVR (Conversion Rate):** Taxa de conversão.
-            *   **Fórmula:** `(Vendas / Cliques) * 100`
-            *   **Interpretação:** A porcentagem de pessoas que clicaram no seu anúncio e realizaram uma compra.
-
-        ### Indicadores Shopee Específicos
-
-        *   **GMV Total (Gross Merchandise Volume):** Valor bruto total das mercadorias vendidas.
-            *   **Fórmula:** `Soma de todas as vendas`
-            *   **Interpretação:** Mede o volume total de vendas na plataforma.
-
-        *   **Despesas:** Custo total com publicidade na Shopee.
-            *   **Fórmula:** `Soma de todos os gastos com anúncios`
-            *   **Interpretação:** O valor total investido em campanhas de anúncios.
-
-        *   **ROAS Médio:** ROAS calculado com base no GMV total e despesas totais.
-            *   **Fórmula:** `(GMV Total / Despesas)`
-            *   **Interpretação:** Retorno médio do investimento em anúncios na Shopee.
-
-        *   **ROAS Direto Médio:** ROAS calculado com base nas conversões diretas e despesas.
-            *   **Fórmula:** `(Receita de Conversões Diretas / Despesas)`
-            *   **Interpretação:** Retorno do investimento considerando apenas as vendas atribuídas diretamente aos anúncios.
-
-        *   **Crédito Proteção Total:** Valor potencial de crédito a ser recebido pela Shopee por campanhas que não atingiram o ROAS alvo.
-            *   **Fórmula:** `(ROAS Alvo - ROAS Real) * Despesas` (para campanhas elegíveis)
-            *   **Interpretação:** Indica o valor que pode ser recuperado em campanhas com baixo desempenho, conforme as políticas de proteção da Shopee.
+        ### 🟠 Shopee
+        1.  **ATIVAR PROTEÇÃO:** ROAS < 2.5 com investimento > R$ 50.
+        2.  **OTIMIZAR ROAS:** ROAS entre 2.5 e 3.0 com mais de 5 conversões.
+        3.  **ESCALAR GMV:** ROAS > 4.0.
         """)
 
-    with st.expander("Dicas e Boas Práticas", expanded=False):
+    with st.expander("🛡️ Regras de Estoque e Bloqueios", expanded=False):
         st.markdown("""
-        *   **Atualize seus relatórios regularmente:** Para ter os dados mais precisos, baixe e faça o upload dos relatórios com frequência.
-        *   **Monitore as recomendações:** Fique atento às sugestões do dashboard para otimizar suas campanhas e proteger seu ROAS.
-        *   **Experimente os filtros:** Utilize os filtros de regra para simular diferentes cenários e encontrar a melhor estratégia para seus anúncios.
-        *   **Compare com o Snapshot V2 (Mercado Livre):** Use o recurso de snapshot para acompanhar a evolução de suas campanhas ao longo do tempo.
-        *   **Entenda suas métricas:** Familiarize-se com os KPIs e suas fórmulas para tomar decisões mais assertivas.
+        Para evitar desperdício de verba, o app aplica filtros automáticos:
+        
+        *   **Bloqueio de Entrada:** Se um produto tem estoque abaixo do "Mínimo para entrar em Ads", ele não será recomendado para ativação, mesmo que tenha ótima conversão orgânica.
+        *   **Freio de Segurança:** Campanhas com produtos em **Estoque Crítico** ou **Baixo** recebem o status "FREAR", priorizando a manutenção do estoque para vendas orgânicas orgânicas até a reposição.
         """)
+
+    st.divider()
+    st.info("💡 **Dica:** Utilize o botão de 'Baixar Excel' ao final da página para obter o plano de ação detalhado para levar para sua operação.")
