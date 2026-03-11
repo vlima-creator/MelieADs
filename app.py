@@ -1071,12 +1071,23 @@ def main():
     
     # Geração do texto do sumário
     def generate_executive_summary(kpis, camp_strat_comp, ads_panel_comp):
-        roas_val = float(kpis.get("ROAS", 0))
+        # Tenta pegar ROAS (ML) ou ROAS Médio (Shopee)
+        roas_val = float(kpis.get("ROAS", kpis.get("ROAS Médio", 0)))
         
-        # Análise de Quadrantes
-        q_counts = camp_strat_comp["Quadrante"].value_counts()
-        q_hemorragia = q_counts.get("HEMORRAGIA", 0)
-        q_escala = q_counts.get("ESCALA_ORCAMENTO", 0)
+        # Análise de Quadrantes (Protegida contra colunas ausentes)
+        q_hemorragia = 0
+        q_escala = 0
+        if "Quadrante" in camp_strat_comp.columns:
+            q_counts = camp_strat_comp["Quadrante"].value_counts()
+            q_hemorragia = q_counts.get("HEMORRAGIA", 0)
+            q_escala = q_counts.get("ESCALA_ORCAMENTO", 0)
+        elif selected_marketplace == "shopee" and "Status Proteção" in camp_strat_comp.columns:
+            # Mapeamento simples para Shopee para preencher os cards do sumário
+            q_counts = camp_strat_comp["Status Proteção"].value_counts()
+            q_hemorragia = q_counts.get("🛡️ Elegível", 0) + q_counts.get("⚠️ Atenção", 0)
+            # Para escala na Shopee, poderíamos olhar as recomendações, mas por ora mantemos 0 ou lógica simples
+            if "ROAS" in camp_strat_comp.columns:
+                q_escala = camp_strat_comp[camp_strat_comp["ROAS"] >= 4.0].shape[0]
         
         # Análise de Migração (Protegida contra colunas ausentes)
         migracao_melhora = 0
