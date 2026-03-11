@@ -105,21 +105,21 @@ def render_user_guide():
         *   **Freio de Segurança:** Campanhas com produtos em **Estoque Crítico** ou **Baixo** recebem o status "FREAR", priorizando a manutenção do estoque para vendas orgânicas orgânicas até a reposição.
         """)
 
-    with st.expander("🔧 Funcionalidades Engine", expanded=False):
+    with st.expander("◈ Funcionalidades Engine", expanded=False):
         st.markdown("""
         O AdsEngine agora conta com um conjunto de ferramentas avançadas para otimizar ainda mais suas campanhas:
 
-        ### 💰 Smart Budget
+        ### ◈ Smart Budget
         *   **O que faz:** Uma calculadora inteligente que sugere a realocação de orçamento de campanhas com baixo desempenho ("Hemorragia") para campanhas de alta performance ("Escala").
         *   **Benefício:** Maximiza o retorno sobre o investimento (ROAS) sem a necessidade de aumentar o orçamento total, garantindo que seu dinheiro esteja sempre nas campanhas mais eficazes.
         *   **Onde encontrar:** Na aba "Funcionalidades Engine" > "Smart Budget" no dashboard.
 
-        ### 🔥 Alerta de Motor Aquecido
+        ### ◈ Alerta de Motor Aquecido
         *   **O que faz:** Monitora suas campanhas e emite alertas visuais quando uma campanha atinge um ROAS excepcionalmente alto (por exemplo, 150% acima do seu baseline).
         *   **Benefício:** Identifica rapidamente as "oportunidades de ouro" para escalar o orçamento e aproveitar ao máximo o bom desempenho, antes que a janela de oportunidade se feche.
         *   **Onde encontrar:** Na aba "Funcionalidades Engine" > "Motor Aquecido" no dashboard.
 
-        ### ⛽ Filtro de Combustível
+        ### ◈ Filtro de Combustível
         *   **O que faz:** Uma lógica aprimorada de gestão de estoque que calcula a "Taxa de Consumo" dos seus produtos e estima os dias de estoque restantes.
         *   **Benefício:** Evita que você gaste dinheiro em anúncios para produtos que estão acabando ou já acabaram. O sistema emite alertas críticos e recomendações para pausar ou reduzir lances em campanhas de produtos com baixo estoque, garantindo que o "motor" nunca rode "seco".
         *   **Onde encontrar:** Na aba "Funcionalidades Engine" > "Filtro de Combustível" no dashboard.

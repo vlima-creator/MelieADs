@@ -39,20 +39,20 @@ def render_engine_features(camp_strat, stock_df=None, usar_estoque=False, fmt_mo
     if fmt_int_br_func is None:
         fmt_int_br_func = lambda x: f"{int(round(float(x))):,}".replace(",", ".")
     
-    st.header("🔧 Funcionalidades Engine")
+    st.header("◈ Funcionalidades Engine")
     st.markdown("Ferramentas avançadas para otimizar o motor de Ads do seu negócio.")
     
     engine_tab1, engine_tab2, engine_tab3 = st.tabs([
-        "💰 Smart Budget",
-        "🔥 Motor Aquecido",
-        "⛽ Filtro de Combustível"
+        "◈ Smart Budget",
+        "◈ Motor Aquecido",
+        "◈ Filtro de Combustível"
     ])
     
     # =====================================================================
     # TAB 1: SMART BUDGET
     # =====================================================================
     with engine_tab1:
-        st.subheader("💰 Smart Budget - Realocação Inteligente de Orçamento")
+        st.subheader("◈ Smart Budget - Realocação Inteligente de Orçamento")
         st.markdown("""
         Calcula automaticamente quanto de orçamento liberar de campanhas em "Hemorragia" 
         para alocar em campanhas em "Escala". Maximiza o retorno sem aumentar o investimento total.
@@ -112,7 +112,7 @@ def render_engine_features(camp_strat, stock_df=None, usar_estoque=False, fmt_mo
     # TAB 2: ALERTA DE MOTOR AQUECIDO
     # =====================================================================
     with engine_tab2:
-        st.subheader("🔥 Alerta de Motor Aquecido - ROAS Excepcional")
+        st.subheader("◈ Alerta de Motor Aquecido - ROAS Excepcional")
         st.markdown("""
         Detecta automaticamente campanhas com ROAS excepcionalmente alto e sugere escala imediata.
         Essas são as oportunidades "ouro" que não devem ser perdidas.
@@ -135,7 +135,7 @@ def render_engine_features(camp_strat, stock_df=None, usar_estoque=False, fmt_mo
             col1.metric(
                 "Campanhas em Alerta",
                 overheated_result['alert_count'],
-                delta="🔥 Motor Aquecido"
+                delta="◈ Motor Aquecido"
             )
             col2.metric(
                 "Oportunidade Total",
@@ -172,7 +172,7 @@ def render_engine_features(camp_strat, stock_df=None, usar_estoque=False, fmt_mo
     # TAB 3: FILTRO DE COMBUSTÍVEL
     # =====================================================================
     with engine_tab3:
-        st.subheader("⛽ Filtro de Combustível - Proteção de Estoque")
+        st.subheader("◈ Filtro de Combustível - Proteção de Estoque")
         st.markdown("""
         Monitora o consumo de estoque em tempo real e alerta antes que o "motor rode seco".
         Garante que você nunca desperdice verba em Ads sem produto para vender.
