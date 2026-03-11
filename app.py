@@ -11,6 +11,7 @@ import liquid_glass_components as lgc
 import sales_funnel as sf
 import marketplace_config as mkt
 import shopee_report as shopee
+import user_guide as ug
 
 
 # -------------------------
@@ -751,6 +752,18 @@ def main():
         st.divider()
     
     # Título dinâmico baseado no marketplace
+    # st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
+
+    selected_page = st.sidebar.radio(
+        "Navegação",
+        ["Dashboard", "Guia de Uso"],
+        format_func=lambda x: f"📊 {x}" if x == "Dashboard" else f"📖 {x}"
+    )
+
+    if selected_page == "Guia de Uso":
+        ug.render_user_guide()
+        return
+    
     st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
 
     with st.sidebar:
