@@ -338,6 +338,10 @@ def apply_fuel_filter_logic(
     
     df = campaigns_df.copy()
     
+    # Garantir que a coluna Estoque exista para evitar erro de chave
+    if 'Estoque' not in df.columns:
+        df['Estoque'] = 0
+    
     # Garantir colunas numéricas
     numeric_cols = ['Vendas', 'Investimento', 'Estoque']
     for col in numeric_cols:

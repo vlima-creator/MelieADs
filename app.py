@@ -1657,9 +1657,14 @@ def main():
     if selected_marketplace == "mercado_livre" and camp_strat is not None and not camp_strat.empty:
         try:
             from engine_integration import render_engine_features
+            # Garantir que usamos o stock_df carregado se disponível
+            current_stock_df = None
+            if "usar_estoque" in locals() and usar_estoque and "stock_df" in locals():
+                current_stock_df = stock_df
+                
             render_engine_features(
                 camp_strat=camp_strat,
-                stock_df=stock_df if "stock_df" in locals() else None,
+                stock_df=current_stock_df,
                 usar_estoque=usar_estoque if "usar_estoque" in locals() else False,
                 fmt_money_br_func=fmt_money_br,
                 fmt_int_br_func=fmt_int_br
