@@ -758,14 +758,17 @@ def main():
         
         # Exibir logo se for Mercado Livre
         if selected_marketplace == "mercado_livre":
-            logo_path = "assets/mercado_livre_logo.png"
+            logo_path = "assets/mercado_livre_logo_transparent.png"
             logo_base64 = get_image_base64(logo_path)
             if logo_base64:
                 st.markdown(
                     f"""
-                    <div style="display: flex; justify-content: center; margin-bottom: 10px;">
-                        <img src="data:image/png;base64,{logo_base64}" width="150">
+                    <div style="display: flex; justify-content: center; margin: 15px 0;">
+                        <div style="background: #ffe600; padding: 12px; border-radius: 50%; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                            <img src="data:image/png;base64,{logo_base64}" width="55">
+                        </div>
                     </div>
+                    <h3 style="text-align: center; margin-top: 0;">{mkt.get_marketplace_config(selected_marketplace)['name']}</h3>
                     """,
                     unsafe_allow_html=True
                 )
@@ -806,14 +809,16 @@ def main():
     
     # Título do Dashboard com Logo para Mercado Livre
     if selected_marketplace == "mercado_livre":
-        logo_path = "assets/mercado_livre_logo.png"
+        logo_path = "assets/mercado_livre_logo_transparent.png"
         logo_base64 = get_image_base64(logo_path)
         if logo_base64:
             st.markdown(
                 f"""
-                <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
-                    <img src="data:image/png;base64,{logo_base64}" width="80">
-                    <h1 style="margin: 0;">{marketplace_config['name']} - Dashboard</h1>
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 25px; background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 12px; border-left: 5px solid #ffe600;">
+                    <div style="background: #ffe600; padding: 8px; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
+                        <img src="data:image/png;base64,{logo_base64}" width="35">
+                    </div>
+                    <h1 style="margin: 0; font-size: 1.8rem;">{marketplace_config['name']} <span style="color: #888; font-weight: 300;">| Dashboard</span></h1>
                 </div>
                 """,
                 unsafe_allow_html=True
