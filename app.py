@@ -750,6 +750,16 @@ def main():
         st.divider()
         st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         st.divider()
+        st.markdown(
+            """
+            <div style='font-size: 0.8em; color: #888888;'>
+                © Vinicius Lima<br>
+                CNPJ: 47.192.694/0001-70
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.divider()
     
     # Título dinâmico baseado no marketplace
     # st.title(f"{marketplace_config['icon']} {marketplace_config['name']} - Dashboard")
@@ -1732,6 +1742,19 @@ def main():
                 st.dataframe(format_table_br(ads_comp_view), use_container_width=True)
             else:
                 st.info("O snapshot carregado não contém dados detalhados de anúncios para comparação.")
+
+    # -------------------------
+    # Rodapé
+    # -------------------------
+    st.divider()
+    st.markdown(
+        """
+        <div style='text-align: center; color: #888888; padding: 20px;'>
+            © Desenvolvido por Vinicius Lima / CNPJ: 47.192.694/0001-70
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 if __name__ == "__main__":
