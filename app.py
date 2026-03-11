@@ -807,6 +807,7 @@ def main():
         organico_file = None
         patrocinados_file = None
         campanhas_file = None
+        camp_agg = pd.DataFrame()
         
         if selected_marketplace == "mercado_livre":
             organico_file = st.file_uploader("Relatorio de Desempenho de Anúncios (Excel)", type=["xlsx"])
@@ -1583,30 +1584,69 @@ def main():
     # Mantem dataframes originais para nao quebrar o gerar_excel do ml_report
     # -------------------------
     st.header("Download do Relatório Completo")
-    try:
-        excel_bytes = ml.gerar_excel(
-            kpis=kpis,
-            camp_agg=camp_agg,
-            pause=pause,
-            enter=enter,
-            scale=scale,
-            acos=acos,
-            camp_strat=camp_strat,
-            ads_panel=ads_panel,
-            camp_strat_comp=camp_strat_comp,
-            daily=None,
-        )
+    
+    if selected_marketplace == "mercado_livre":
+        try:
+            excel_bytes = ml.gerar_excel(
+                kpis=kpis,
+                camp_agg=camp_agg,
+                pause=pause,
+                enter=enter,
+                scale=scale,
+                acos=acos,
+                camp_strat=camp_strat,
+                ads_panel=ads_panel,
+                camp_strat_comp=camp_strat_comp,
+                daily=None,
+            )
 
-        st.download_button(
-            "Baixar Excel do relatório",
-            data=excel_bytes,
-            file_name="relatorio_meli_ads.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    except Exception as e:
-        st.error("Não consegui gerar o Excel.")
-        st.exception(e)
+            st.download_button(
+                "Baixar Excel do relatório",
+                data=excel_bytes,
+                file_name="relatorio_meli_ads.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error("Não consegui gerar o Excel.")
+            st.exception(e)
+    else:
+        # Para Shopee, geramos um Excel simplificado com os dados processados
+        try:
+            from io import BytesIO
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                # Aba de KPIs
+                kpis_df = pd.DataFrame([kpis])
+                kpis_df.to_excel(writer, sheet_name='KPIs_Gerais', index=False)
+                
+                # Aba de Dados Gerais
+                if 'df_shopee_geral' in locals():
+                    df_shopee_geral.to_excel(writer, sheet_name='Dados_Gerais', index=False)
+                
+                # Aba de Proteção de ROAS
+                if 'df_shopee_protecao' in locals():
+                    df_shopee_protecao.to_excel(writer, sheet_name='Protecao_ROAS', index=False)
+                
+                # Aba de Conversões
+                if 'df_shopee_conversoes' in locals():
+                    df_shopee_conversoes.to_excel(writer, sheet_name='Analise_Conversoes', index=False)
+                
+                # Aba de Palavras-chave
+                if 'df_shopee_keywords' in locals() and df_shopee_keywords is not None:
+                    df_shopee_keywords.to_excel(writer, sheet_name='Palavras_Chave', index=False)
+            
+            excel_data = output.getvalue()
+            st.download_button(
+                "Baixar Excel do relatório Shopee",
+                data=excel_data,
+                file_name="relatorio_shopee_ads.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error("Não consegui gerar o Excel da Shopee.")
+            st.exception(e)
 
 
     st.divider()
