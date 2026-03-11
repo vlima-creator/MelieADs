@@ -804,6 +804,9 @@ def main():
         
         # Upload dinâmico baseado no marketplace
         uploaded_files = {}
+        organico_file = None
+        patrocinados_file = None
+        campanhas_file = None
         
         if selected_marketplace == "mercado_livre":
             organico_file = st.file_uploader("Relatorio de Desempenho de Anúncios (Excel)", type=["xlsx"])
@@ -925,9 +928,11 @@ def main():
             st.info("📄 Envie o arquivo de Dados Gerais de Anúncios da Shopee na barra lateral para gerar o relatório.")
             return
 
-    if not (organico_file and patrocinados_file and campanhas_file):
-        st.info("Envie os 3 arquivos na barra lateral para liberar o relatório.")
-        return
+    # Verificação de arquivos para Mercado Livre (já feita acima, mas mantendo compatibilidade se necessário)
+    if selected_marketplace == "mercado_livre":
+        if not (organico_file and patrocinados_file and campanhas_file):
+            st.info("Envie os 3 arquivos na barra lateral para liberar o relatório.")
+            return
 
     if not executar:
         st.warning("Quando estiver pronto, clique em Gerar relatório.")
